@@ -1,5 +1,6 @@
-const { addUser, removeUser, getGuildUsers, initializeGuildConfig, updateGuildChannel } = require('./configManager');
+const { addUser, removeUser, getGuildUsers, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs } = require('./configManager');
 const { enhancedCheck } = require('./apiUtils');
+const { scheduleTasks } = require('./scheduledTasks');
 
 async function handleInteraction(interaction) {
     console.log(`[handleInteraction] Interaction received: ${interaction.commandName}`);
@@ -31,6 +32,9 @@ async function handleInteraction(interaction) {
                 break;
             case 'setchannel':
                 await handleSetChannel(interaction);
+                break;
+            case 'managecron':
+                await handleManageCron(interaction);
                 break;
             default:
                 await interaction.reply('Unknown command.');
@@ -101,6 +105,45 @@ async function handleSetChannel(interaction) {
     await initializeGuildConfig(interaction.guildId, channel.id);
     await updateGuildChannel(interaction.guildId, channel.id);
     await interaction.reply(`Announcement channel set to ${channel}.`);
+}
+
+async function handleManageCron(interaction) {
+    if (!interaction.memberPermissions.has('MANAGE_CHANNELS')) {
+        await interaction.reply('You need the Manage Channels permission to use this command.');
+        return;
+    }
+
+    const subcommand = interaction.options.getSubcommand();
+
+    switch (subcommand) {
+        case 'add': {
+            const hours = interaction.options.getInteger('hours');
+            const minutes = interaction.options.getInteger('minutes');
+            const result = await addCronJob(interaction.guildId, hours, minutes);
+            await interaction.reply(result);
+            // Reschedule tasks to apply the new schedule
+            await scheduleTasks(interaction.client);
+            break;
+        }
+        case 'remove': {
+            const hours = interaction.options.getInteger('hours');
+            const minutes = interaction.options.getInteger('minutes');
+            const result = await removeCronJob(interaction.guildId, hours, minutes);
+            await interaction.reply(result);
+            // Reschedule tasks to apply the removed schedule
+            await scheduleTasks(interaction.client);
+            break;
+        }
+        case 'list': {
+            const times = await listCronJobs(interaction.guildId);
+            if (times.length === 0) {
+                await interaction.reply('No scheduled check times configured.');
+            } else {
+                await interaction.reply(`Scheduled check times:\n${times.join('\n')}`);
+            }
+            break;
+        }
+    }
 }
 
 module.exports = { handleInteraction };

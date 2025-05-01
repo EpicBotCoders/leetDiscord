@@ -37,6 +37,46 @@ const commands = [
             option.setName('channel')
                 .setDescription('The channel to send announcements to')
                 .setRequired(true))
+        .toJSON(),
+    new SlashCommandBuilder()
+        .setName('managecron')
+        .setDescription('Manage cron schedules for LeetCode checks')
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('add')
+                .setDescription('Add a new check time')
+                .addIntegerOption(option =>
+                    option.setName('hours')
+                        .setDescription('Hour in 24H format (0-23)')
+                        .setRequired(true)
+                        .setMinValue(0)
+                        .setMaxValue(23))
+                .addIntegerOption(option =>
+                    option.setName('minutes')
+                        .setDescription('Minutes (0-59)')
+                        .setRequired(true)
+                        .setMinValue(0)
+                        .setMaxValue(59)))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('remove')
+                .setDescription('Remove an existing check time')
+                .addIntegerOption(option =>
+                    option.setName('hours')
+                        .setDescription('Hour in 24H format (0-23)')
+                        .setRequired(true)
+                        .setMinValue(0)
+                        .setMaxValue(23))
+                .addIntegerOption(option =>
+                    option.setName('minutes')
+                        .setDescription('Minutes (0-59)')
+                        .setRequired(true)
+                        .setMinValue(0)
+                        .setMaxValue(59)))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('list')
+                .setDescription('List all scheduled check times'))
         .toJSON()
 ];
 

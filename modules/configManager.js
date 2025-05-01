@@ -74,6 +74,66 @@ async function updateGuildChannel(guildId, channelId) {
     return `Updated announcement channel for this server.`;
 }
 
+async function addCronJob(guildId, hours, minutes) {
+    const config = await loadConfig();
+    if (!config.guilds[guildId]) {
+        throw new Error('Guild not configured');
+    }
+
+    const schedule = `${minutes} ${hours} * * *`;
+    const existingJob = config.guilds[guildId].cronJobs.find(
+        job => job.schedule === schedule && job.task === 'runCheck'
+    );
+
+    if (existingJob) {
+        return `A check is already scheduled for ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    }
+
+    config.guilds[guildId].cronJobs.push({
+        schedule,
+        task: 'runCheck'
+    });
+
+    await updateConfig(config);
+    return `Added new check time at ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+}
+
+async function removeCronJob(guildId, hours, minutes) {
+    const config = await loadConfig();
+    if (!config.guilds[guildId]) {
+        throw new Error('Guild not configured');
+    }
+
+    const schedule = `${minutes} ${hours} * * *`;
+    const initialLength = config.guilds[guildId].cronJobs.length;
+    
+    config.guilds[guildId].cronJobs = config.guilds[guildId].cronJobs.filter(
+        job => !(job.schedule === schedule && job.task === 'runCheck')
+    );
+
+    if (config.guilds[guildId].cronJobs.length === initialLength) {
+        return `No check scheduled for ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    }
+
+    await updateConfig(config);
+    return `Removed check time at ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+}
+
+async function listCronJobs(guildId) {
+    const config = await loadConfig();
+    if (!config.guilds[guildId]) {
+        throw new Error('Guild not configured');
+    }
+
+    return config.guilds[guildId].cronJobs
+        .filter(job => job.task === 'runCheck')
+        .map(job => {
+            const [minutes, hours] = job.schedule.split(' ');
+            return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`;
+        })
+        .sort();
+}
+
 module.exports = { 
     loadConfig,
     updateConfig, 
@@ -82,5 +142,8 @@ module.exports = {
     removeUser,
     getGuildUsers,
     getGuildConfig,
-    updateGuildChannel
+    updateGuildChannel,
+    addCronJob,
+    removeCronJob,
+    listCronJobs
 };
