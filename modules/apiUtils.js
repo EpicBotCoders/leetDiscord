@@ -46,19 +46,29 @@ async function enhancedCheck(users, client, channelId) {
 
         const topicTags = problem.topicTags ? problem.topicTags.map(tag => tag.name).join(', ') : 'N/A';
         const stats = problem.stats ? JSON.parse(problem.stats) : { acRate: 'N/A' };
+
+        // Create problem info field
+        const problemField = {
+            name: 'Problem Info',
+            value: `**${problem.title || 'Unknown Problem'}** (${problem.difficulty || 'N/A'})\n` +
+                   `Topics: ${topicTags}\n` +
+                   `Acceptance Rate: ${stats.acRate}\n` +
+                   `[View Problem](${problem.url || 'N/A'})`
+        };
         
-        const userStatuses = await Promise.all(users.map(async username => {
+        // Create individual fields for each user status
+        const userStatusFields = await Promise.all(users.map(async username => {
             const solved = await checkUser(username, dailyData);
-            return `${username}: ${solved ? '✅' : '❌'}`;
+            return {
+                name: username,
+                value: solved ? '✅ Completed' : '❌ Not completed',
+                inline: true
+            };
         }));
 
         const statusEmbed = {
             title: 'Daily LeetCode Challenge Status',
-            description: `**${problem.title || 'Unknown Problem'}** (${problem.difficulty || 'N/A'})\n` +
-                        `Topics: ${topicTags}\n` +
-                        `Acceptance Rate: ${stats.acRate}\n` +
-                        `URL: ${problem.url || 'N/A'}\n\n` +
-                        `**User Status:**\n${userStatuses.join('\n')}`,
+            fields: [problemField, ...userStatusFields],
             color: 0x00ff00,
             timestamp: new Date()
         };
