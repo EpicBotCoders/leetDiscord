@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const cron = require('node-cron');
 const axios = require('axios');
 const { token, channelId, users } = require('./config.json');
@@ -10,6 +10,31 @@ const client = new Client({
         GatewayIntentBits.MessageContent
     ]
 });
+
+// Command definition
+const commands = [
+    new SlashCommandBuilder()
+        .setName('check')
+        .setDescription('Run a manual check of today\'s LeetCode challenge status')
+        .toJSON()
+];
+
+// Register slash commands
+async function registerCommands(clientId) {
+    try {
+        const rest = new REST({ version: '10' }).setToken(token);
+        console.log('Started refreshing application (/) commands.');
+
+        await rest.put(
+            Routes.applicationCommands(clientId),
+            { body: commands },
+        );
+
+        console.log('Successfully reloaded application (/) commands.');
+    } catch (error) {
+        console.error('Error registering commands:', error);
+    }
+}
 
 // Fetch today’s daily challenge slug
 async function getDailySlug() {
@@ -42,15 +67,22 @@ async function runCheck() {
     }
 }
 
-client.on('messageCreate', async message => {
-    if (message.content.toLowerCase() === '!check') {
-        await message.reply('Running daily challenge check...');
+// Replace the messageCreate event with interactionCreate
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isChatInputCommand()) return;
+
+    if (interaction.commandName === 'check') {
+        await interaction.reply('Running daily challenge check...');
         await runCheck();
     }
 });
 
-client.once('ready', () => {
+client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
+    
+    // Register commands when bot starts
+    await registerCommands(client.user.id);
+    console.log('Bot application ID:', client.user.id); // This will help us verify the correct ID is being used
 
     // Schedule for 10:00 AM IST
     cron.schedule('0 10 * * *', runCheck, { timezone: 'Asia/Kolkata' });       // 10:00 IST 
