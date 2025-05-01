@@ -38,48 +38,29 @@ async function checkUser(username, slug) {
 
 // Enhanced check function with more problem details
 async function enhancedCheck(users, client, channelId) {
+    console.log('[enhancedCheck] Starting enhanced check for users:', users);
     try {
-        console.log('[enhancedCheck] Starting enhanced check for users:', users);
-        const dailyData = await axios.get('https://leetcode-api-pied.vercel.app/daily');
-        const problem = dailyData.data.question;
-        const slug = problem.titleSlug;
+        const dailyData = await getDailySlug();
+        const problemDetails = await axios.get(`https://leetcode-api-pied.vercel.app/problem/${dailyData}`);
+        const problem = problemDetails.data;
 
-        // Get detailed problem info
-        const detailedProblemResponse = await axios.get(`https://leetcode-api-pied.vercel.app/problem/${slug}`);
-        const detailedProblem = detailedProblemResponse.data;
-
-        const results = await Promise.all(users.map(u => checkUser(u, slug)));
-
-        // Get topic tags from detailed problem info
-        const topics = detailedProblem.topicTags && Array.isArray(detailedProblem.topicTags)
-            ? detailedProblem.topicTags.map(t => t.name).join(', ')
-            : 'Not specified';
-
-        // Parse stats if available
-        let stats = {};
-        try {
-            stats = JSON.parse(detailedProblem.stats);
-        } catch (e) {
-            console.warn('[enhancedCheck] Error parsing problem stats:', e);
-            stats = { acRate: 'Unknown' };
-        }
+        const topicTags = problem.topicTags.map(tag => tag.name).join(', ');
+        const stats = JSON.parse(problem.stats);
+        
+        const userStatuses = await Promise.all(users.map(async username => {
+            const solved = await checkUser(username, dailyData);
+            return `${username}: ${solved ? '✅' : '❌'}`;
+        }));
 
         const statusEmbed = {
-            title: `Daily LeetCode Challenge Status`,
-            description: `**Problem**: ${detailedProblem.title || 'Unknown'}\n` +
-                        `**Difficulty**: ${detailedProblem.difficulty || 'Unknown'}\n` +
-                        `**Topics**: ${topics}\n` +
-                        `**Acceptance Rate**: ${stats.acRate || 'Unknown'}\n` +
-                        `**Total Submissions**: ${stats.totalSubmission || 'Unknown'}\n\n` +
-                        `**User Status**:`,
-            fields: users.map((u, i) => ({
-                name: u,
-                value: results[i] ? '✅ Completed' : '❌ Not completed',
-                inline: true
-            })),
+            title: 'Daily LeetCode Challenge Status',
+            description: `**${problem.title}** (${problem.difficulty})\n` +
+                        `Topics: ${topicTags}\n` +
+                        `Acceptance Rate: ${stats.acRate}\n` +
+                        `URL: ${problem.url}\n\n` +
+                        `**User Status:**\n${userStatuses.join('\n')}`,
             color: 0x00ff00,
-            timestamp: new Date(),
-            url: detailedProblem.url || `https://leetcode.com/problems/${slug}`
+            timestamp: new Date()
         };
 
         return { embeds: [statusEmbed] };
