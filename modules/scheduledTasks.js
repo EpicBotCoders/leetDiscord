@@ -18,18 +18,6 @@ async function runGuildCheck(client, guildId) {
         }
 
         const checkResult = await enhancedCheck(users, client, guildConfig.channelId);
-        
-        // Add mentions for users with Discord IDs
-        if (checkResult.embeds?.[0]) {
-            const embed = checkResult.embeds[0];
-            embed.fields = embed.fields.map(field => {
-                const discordId = guildConfig.users[field.name];
-                return {
-                    ...field,
-                    name: discordId ? `<@${discordId}> (${field.name})` : field.name
-                };
-            });
-        }
 
         const channel = await client.channels.fetch(guildConfig.channelId);
         if (channel) {

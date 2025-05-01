@@ -44,8 +44,8 @@ async function enhancedCheck(users, client, channelId) {
         const problemDetails = await axios.get(`https://leetcode-api-pied.vercel.app/problem/${dailyData}`);
         const problem = problemDetails.data;
 
-        const topicTags = problem.topicTags.map(tag => tag.name).join(', ');
-        const stats = JSON.parse(problem.stats);
+        const topicTags = problem.topicTags ? problem.topicTags.map(tag => tag.name).join(', ') : 'N/A';
+        const stats = problem.stats ? JSON.parse(problem.stats) : { acRate: 'N/A' };
         
         const userStatuses = await Promise.all(users.map(async username => {
             const solved = await checkUser(username, dailyData);
@@ -54,10 +54,10 @@ async function enhancedCheck(users, client, channelId) {
 
         const statusEmbed = {
             title: 'Daily LeetCode Challenge Status',
-            description: `**${problem.title}** (${problem.difficulty})\n` +
+            description: `**${problem.title || 'Unknown Problem'}** (${problem.difficulty || 'N/A'})\n` +
                         `Topics: ${topicTags}\n` +
                         `Acceptance Rate: ${stats.acRate}\n` +
-                        `URL: ${problem.url}\n\n` +
+                        `URL: ${problem.url || 'N/A'}\n\n` +
                         `**User Status:**\n${userStatuses.join('\n')}`,
             color: 0x00ff00,
             timestamp: new Date()
