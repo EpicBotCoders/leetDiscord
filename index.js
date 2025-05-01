@@ -1,7 +1,12 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const cron = require('node-cron');
 const axios = require('axios');
+const fs = require('fs').promises;
+const path = require('path');
 const { token, channelId, users } = require('./config.json');
+
+const ADMIN_USER_ID = '637911567920529409';
+const CONFIG_PATH = path.join(__dirname, 'config.json');
 
 const client = new Client({ 
     intents: [
@@ -11,12 +16,32 @@ const client = new Client({
     ]
 });
 
-// Command definition
+// Command definitions
 const commands = [
     new SlashCommandBuilder()
         .setName('check')
         .setDescription('Run a manual check of today\'s LeetCode challenge status')
-        .toJSON()
+        .toJSON(),
+    new SlashCommandBuilder()
+        .setName('adduser')
+        .setDescription('Add a LeetCode username to track')
+        .addStringOption(option =>
+            option.setName('username')
+                .setDescription('The LeetCode username to add')
+                .setRequired(true))
+        .toJSON(),
+    new SlashCommandBuilder()
+        .setName('removeuser')
+        .setDescription('Remove a LeetCode username from tracking')
+        .addStringOption(option =>
+            option.setName('username')
+                .setDescription('The LeetCode username to remove')
+                .setRequired(true))
+        .toJSON(),
+    new SlashCommandBuilder()
+        .setName('listusers')
+        .setDescription('List all tracked LeetCode usernames')
+        .toJSON(),
 ];
 
 // Register slash commands
@@ -57,23 +82,140 @@ async function checkUser(username, slug) {
 // The scheduled task
 async function runCheck() {
     try {
-        const slug = await getDailySlug();                                     // daily slug :contentReference[oaicite:1]{index=1}
+        const checkResult = await enhancedCheck();
         const channel = await client.channels.fetch(channelId);
-        const results = await Promise.all(users.map(u => checkUser(u, slug)));
-        const lines = users.map((u, i) => `**${u}**: ${results[i] ? '✅ done' : '❌ not done'}`);
-        channel.send(`Daily challenge **${slug}** status:\n` + lines.join('\n'));
+        channel.send(checkResult);
     } catch (err) {
         console.error('Error during daily check', err);
     }
 }
 
-// Replace the messageCreate event with interactionCreate
+// Config management functions
+async function updateConfig(newConfig) {
+    await fs.writeFile(CONFIG_PATH, JSON.stringify(newConfig, null, 4));
+}
+
+async function addUser(username) {
+    const config = require('./config.json');
+    if (config.users.includes(username)) {
+        return `${username} is already being tracked.`;
+    }
+    config.users.push(username);
+    await updateConfig(config);
+    return `Added ${username} to tracking list.`;
+}
+
+async function removeUser(username) {
+    const config = require('./config.json');
+    const index = config.users.indexOf(username);
+    if (index === -1) {
+        return `${username} is not in the tracking list.`;
+    }
+    config.users.splice(index, 1);
+    await updateConfig(config);
+    return `Removed ${username} from tracking list.`;
+}
+
+// Enhanced check function with more problem details
+async function enhancedCheck() {
+    try {
+        const dailyData = await axios.get('https://leetcode-api-pied.vercel.app/daily');
+        const problem = dailyData.data.question;
+        const slug = problem.titleSlug;
+        
+        // Get detailed problem info
+        const detailedProblemResponse = await axios.get(`https://leetcode-api-pied.vercel.app/problem/${slug}`);
+        const detailedProblem = detailedProblemResponse.data;
+        
+        const channel = await client.channels.fetch(channelId);
+        const results = await Promise.all(users.map(u => checkUser(u, slug)));
+        
+        // Get topic tags from detailed problem info
+        const topics = detailedProblem.topicTags && Array.isArray(detailedProblem.topicTags)
+            ? detailedProblem.topicTags.map(t => t.name).join(', ')
+            : 'Not specified';
+
+        // Parse stats if available
+        let stats = {};
+        try {
+            stats = JSON.parse(detailedProblem.stats);
+        } catch (e) {
+            stats = { acRate: 'Unknown' };
+        }
+        
+        const statusEmbed = {
+            title: `Daily LeetCode Challenge Status`,
+            description: `**Problem**: ${detailedProblem.title || 'Unknown'}\n` +
+                        `**Difficulty**: ${detailedProblem.difficulty || 'Unknown'}\n` +
+                        `**Topics**: ${topics}\n` +
+                        `**Acceptance Rate**: ${stats.acRate || 'Unknown'}\n` +
+                        `**Total Submissions**: ${stats.totalSubmission || 'Unknown'}\n\n` +
+                        `**User Status**:`,
+            fields: users.map((u, i) => ({
+                name: u,
+                value: results[i] ? '✅ Completed' : '❌ Not completed',
+                inline: true
+            })),
+            color: 0x00ff00,
+            timestamp: new Date(),
+            url: detailedProblem.url || `https://leetcode.com/problems/${slug}`
+        };
+        
+        return { embeds: [statusEmbed] };
+    } catch (err) {
+        console.error('Error during enhanced check', err);
+        return { content: 'Error checking challenge status.' };
+    }
+}
+
+// Replace the existing interactionCreate handler
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
-    if (interaction.commandName === 'check') {
-        await interaction.reply('Running daily challenge check...');
-        await runCheck();
+    // Check if the command is admin-only
+    const isAdmin = interaction.user.id === ADMIN_USER_ID;
+    
+    try {
+        switch (interaction.commandName) {
+            case 'check':
+                await interaction.deferReply();
+                const checkResult = await enhancedCheck();
+                await interaction.editReply(checkResult);
+                break;
+                
+            case 'adduser':
+                if (!isAdmin) {
+                    await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+                    return;
+                }
+                const userToAdd = interaction.options.getString('username');
+                const addResult = await addUser(userToAdd);
+                await interaction.reply(addResult);
+                break;
+                
+            case 'removeuser':
+                if (!isAdmin) {
+                    await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+                    return;
+                }
+                const userToRemove = interaction.options.getString('username');
+                const removeResult = await removeUser(userToRemove);
+                await interaction.reply(removeResult);
+                break;
+                
+            case 'listusers':
+                const config = require('./config.json');
+                await interaction.reply(`Currently tracking these users:\n${config.users.map(u => `• ${u}`).join('\n')}`);
+                break;
+        }
+    } catch (error) {
+        console.error('Error handling command:', error);
+        const errorMessage = { content: 'An error occurred while processing the command.', ephemeral: true };
+        if (interaction.deferred) {
+            await interaction.editReply(errorMessage);
+        } else {
+            await interaction.reply(errorMessage);
+        }
     }
 });
 
