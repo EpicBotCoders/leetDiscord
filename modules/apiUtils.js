@@ -2,25 +2,44 @@ const axios = require('axios');
 
 // Fetch today’s daily challenge slug
 async function getDailySlug() {
-    const res = await axios.get('https://leetcode-api-pied.vercel.app/daily');
-    return res.data.question.titleSlug;
+    try {
+        console.log('[getDailySlug] Fetching daily challenge slug.');
+        const res = await axios.get('https://leetcode-api-pied.vercel.app/daily');
+        return res.data.question.titleSlug;
+    } catch (error) {
+        console.error('[getDailySlug] Error fetching daily challenge slug:', error);
+        throw error;
+    }
 }
 
 // Fetch recent submissions for a user (limit 20)
 async function getUserSubmissions(username) {
-    const res = await axios.get(`https://leetcode-api-pied.vercel.app/user/${username}/submissions?limit=20`);
-    return res.data; // array of { titleSlug, statusDisplay, ... }
+    try {
+        console.log(`[getUserSubmissions] Fetching submissions for user: ${username}`);
+        const res = await axios.get(`https://leetcode-api-pied.vercel.app/user/${username}/submissions?limit=20`);
+        return res.data; // array of { titleSlug, statusDisplay, ... }
+    } catch (error) {
+        console.error(`[getUserSubmissions] Error fetching submissions for user: ${username}`, error);
+        throw error;
+    }
 }
 
 // Check whether user solved today’s slug
 async function checkUser(username, slug) {
-    const subs = await getUserSubmissions(username);
-    return subs.some(s => s.titleSlug === slug && s.statusDisplay === 'Accepted');
+    try {
+        console.log(`[checkUser] Checking if user ${username} solved slug ${slug}`);
+        const subs = await getUserSubmissions(username);
+        return subs.some(s => s.titleSlug === slug && s.statusDisplay === 'Accepted');
+    } catch (error) {
+        console.error(`[checkUser] Error checking user ${username} for slug ${slug}:`, error);
+        throw error;
+    }
 }
 
 // Enhanced check function with more problem details
 async function enhancedCheck(users, client, channelId) {
     try {
+        console.log('[enhancedCheck] Starting enhanced check for users:', users);
         const dailyData = await axios.get('https://leetcode-api-pied.vercel.app/daily');
         const problem = dailyData.data.question;
         const slug = problem.titleSlug;
@@ -41,6 +60,7 @@ async function enhancedCheck(users, client, channelId) {
         try {
             stats = JSON.parse(detailedProblem.stats);
         } catch (e) {
+            console.warn('[enhancedCheck] Error parsing problem stats:', e);
             stats = { acRate: 'Unknown' };
         }
 
@@ -64,7 +84,7 @@ async function enhancedCheck(users, client, channelId) {
 
         return { embeds: [statusEmbed] };
     } catch (err) {
-        console.error('Error during enhanced check', err);
+        console.error('[enhancedCheck] Error during enhanced check:', err);
         return { content: 'Error checking challenge status.' };
     }
 }
