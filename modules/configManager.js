@@ -1,32 +1,86 @@
 const fs = require('fs').promises;
-const CONFIG_PATH = '../config.json';
+const path = require('path');
+const CONFIG_PATH = path.join(__dirname, '../config.json');
 
-// Update the configuration file
+async function loadConfig() {
+    const configData = await fs.readFile(CONFIG_PATH, 'utf8');
+    return JSON.parse(configData);
+}
+
 async function updateConfig(newConfig) {
     await fs.writeFile(CONFIG_PATH, JSON.stringify(newConfig, null, 4));
 }
 
-// Add a user to the tracking list
-async function addUser(username) {
-    const config = require(CONFIG_PATH);
-    if (config.users.includes(username)) {
-        return `${username} is already being tracked.`;
+async function initializeGuildConfig(guildId, channelId) {
+    const config = await loadConfig();
+    if (!config.guilds[guildId]) {
+        config.guilds[guildId] = {
+            channelId,
+            users: {},
+            cronJobs: [
+                { schedule: "0 10 * * *", task: "runCheck" },
+                { schedule: "0 18 * * *", task: "runCheck" }
+            ]
+        };
+        await updateConfig(config);
     }
-    config.users.push(username);
-    await updateConfig(config);
-    return `Added ${username} to tracking list.`;
+    return config.guilds[guildId];
 }
 
-// Remove a user from the tracking list
-async function removeUser(username) {
-    const config = require(CONFIG_PATH);
-    const index = config.users.indexOf(username);
-    if (index === -1) {
-        return `${username} is not in the tracking list.`;
+async function addUser(guildId, username, discordId = null) {
+    const config = await loadConfig();
+    if (!config.guilds[guildId]) {
+        throw new Error('Guild not configured');
     }
-    config.users.splice(index, 1);
+
+    if (config.guilds[guildId].users[username]) {
+        return `${username} is already being tracked in this server.`;
+    }
+
+    config.guilds[guildId].users[username] = discordId;
     await updateConfig(config);
-    return `Removed ${username} from tracking list.`;
+    return `Added ${username} to tracking list for this server.`;
 }
 
-module.exports = { updateConfig, addUser, removeUser };
+async function removeUser(guildId, username) {
+    const config = await loadConfig();
+    if (!config.guilds[guildId]?.users[username]) {
+        return `${username} is not in the tracking list for this server.`;
+    }
+
+    delete config.guilds[guildId].users[username];
+    await updateConfig(config);
+    return `Removed ${username} from tracking list for this server.`;
+}
+
+async function getGuildUsers(guildId) {
+    const config = await loadConfig();
+    return config.guilds[guildId]?.users || {};
+}
+
+async function getGuildConfig(guildId) {
+    const config = await loadConfig();
+    return config.guilds[guildId];
+}
+
+async function updateGuildChannel(guildId, channelId) {
+    const config = await loadConfig();
+    if (!config.guilds[guildId]) {
+        throw new Error('Guild not configured');
+    }
+    
+    config.guilds[guildId].channelId = channelId;
+    await updateConfig(config);
+    return `Updated announcement channel for this server.`;
+}
+
+module.exports = { 
+    loadConfig,
+    updateConfig, 
+    initializeGuildConfig,
+    addUser, 
+    removeUser,
+    getGuildUsers,
+    getGuildConfig,
+    updateGuildChannel
+};
