@@ -5,23 +5,27 @@ const path = require('path');
 const logFormat = winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
-    winston.format.splat(),
-    winston.format.json()
+    winston.format.printf(({ level, message, timestamp, stack }) => {
+        if (stack) {
+            return `${timestamp} ${level}: ${message}\n${stack}`;
+        }
+        return `${timestamp} ${level}: ${message}`;
+    })
 );
 
 // Create logger instance
 const logger = winston.createLogger({
-    level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+    level: 'debug', // Set to debug level
     format: logFormat,
     transports: [
-        // Write all logs to console
+        // Write all logs to console with colors
         new winston.transports.Console({
             format: winston.format.combine(
                 winston.format.colorize(),
                 winston.format.simple()
             )
         }),
-        // Write all logs with level 'info' and below to combined.log
+        // Write all logs to combined.log
         new winston.transports.File({
             filename: path.join(__dirname, '../logs/combined.log'),
             maxsize: 5242880, // 5MB

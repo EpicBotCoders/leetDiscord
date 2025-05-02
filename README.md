@@ -76,3 +76,4 @@ When the bot joins a new server:
 
 ## Security Note
 Never commit your `config.json` with real token values to version control. Add it to your `.gitignore` file.
+

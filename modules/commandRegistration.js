@@ -1,5 +1,6 @@
 const { REST, Routes, SlashCommandBuilder } = require('discord.js');
-const { token } = require('../config.json');
+require('dotenv').config();
+const logger = require('./logger');
 
 const commands = [
     new SlashCommandBuilder()
@@ -81,10 +82,16 @@ const commands = [
 ];
 
 async function registerCommands(clientId) {
-    console.log(`[registerCommands] Initializing command registration for clientId: ${clientId}`);
-    const rest = new REST({ version: '10' }).setToken(token);
+    if (!clientId) {
+        logger.error('Failed to register commands: No client ID provided');
+        return;
+    }
+    
+    logger.info(`Initializing command registration for clientId: ${clientId}`);
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    
     try {
-        console.log('[registerCommands] Started refreshing application (/) commands.');
+        logger.info('Started refreshing application (/) commands.');
 
         // Register commands globally instead of per-guild
         await rest.put(
@@ -92,9 +99,10 @@ async function registerCommands(clientId) {
             { body: commands }
         );
 
-        console.log('[registerCommands] Successfully reloaded application (/) commands.');
+        logger.info('Successfully reloaded application (/) commands.');
     } catch (error) {
-        console.error('[registerCommands] Error reloading commands:', error);
+        logger.error('Error reloading commands:', error);
+        throw error; // Propagate error for proper handling
     }
 }
 

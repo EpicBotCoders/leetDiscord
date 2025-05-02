@@ -2,80 +2,41 @@
 
 // Import necessary modules
 const { Client, GatewayIntentBits } = require('discord.js');
-const { token } = require('./config.json');
-const { registerCommands } = require('./modules/commandRegistration');
-const { scheduleTasks } = require('./modules/scheduledTasks');
 const { handleInteraction } = require('./modules/interactionHandler');
-const { initializeGuildConfig } = require('./modules/configManager');
+const { registerCommands } = require('./modules/commandRegistration');
+const { loadConfig } = require('./modules/configManager');
+const { connectDB } = require('./modules/models/db');
+const logger = require('./modules/logger');
+const { initializeScheduledTasks } = require('./modules/scheduledTasks');
 
-const client = new Client({ 
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
-});
-
-// Handle guild join events
-client.on('guildCreate', async (guild) => {
+async function main() {
     try {
-        console.log(`[guildCreate] Bot joined new guild: ${guild.name} (${guild.id})`);
-        // Find the first available text channel to send welcome message
-        const channel = guild.channels.cache
-            .find(channel => channel.type === 0 && channel.permissionsFor(guild.members.me).has('SendMessages'));
+        // Connect to MongoDB first
+        await connectDB();
 
-        if (channel) {
-            await initializeGuildConfig(guild.id, channel.id);
-            await channel.send(
-                'Thanks for adding me! Please use `/setchannel` to set up the announcement channel, ' +
-                'then use `/adduser` to start tracking LeetCode users in this server.'
-            );
-        }
-    } catch (error) {
-        console.error('[guildCreate] Error handling new guild:', error);
-    }
-});
-
-client.on('interactionCreate', async (interaction) => {
-    try {
-        await handleInteraction(interaction);
-    } catch (error) {
-        console.error('[interactionCreate] Error handling interaction:', error);
-    }
-});
-
-client.once('ready', async () => {
-    try {
-        console.log(`Logged in as ${client.user.tag}`);
-        await registerCommands(client.user.id);
-
-        // Initialize configurations for existing guilds if needed
-        client.guilds.cache.forEach(async (guild) => {
-            try {
-                const config = await initializeGuildConfig(guild.id, null);
-                if (!config.channelId) {
-                    const channel = guild.channels.cache
-                        .find(channel => channel.type === 0 && channel.permissionsFor(guild.members.me).has('SendMessages'));
-                    if (channel) {
-                        await initializeGuildConfig(guild.id, channel.id);
-                    }
-                }
-            } catch (error) {
-                console.error(`[Ready] Error initializing guild ${guild.id}:`, error);
-            }
+        const config = await loadConfig();
+        const client = new Client({
+            intents: [
+                GatewayIntentBits.Guilds,
+                GatewayIntentBits.GuildMessages
+            ]
         });
 
-        // Schedule tasks for all guilds
-        await scheduleTasks(client);
+        client.once('ready', () => {
+            logger.info('Bot is ready!');
+            registerCommands(client.application.id);
+            initializeScheduledTasks(client);
+        });
+
+        client.on('interactionCreate', async interaction => {
+            await handleInteraction(interaction);
+        });
+
+        await client.login(config.token);
     } catch (error) {
-        console.error('[Ready] Error during client ready event:', error);
+        logger.error('Failed to start the bot:', error);
+        process.exit(1);
     }
-});
+}
 
-process.on('unhandledRejection', error => {
-    console.error('Unhandled promise rejection:', error);
-});
-
-client.login(token).catch(error => {
-    console.error('[Login] Error logging in:', error);
-});
+main();

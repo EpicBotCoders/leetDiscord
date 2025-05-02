@@ -1,12 +1,13 @@
 const { addUser, removeUser, getGuildUsers, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs } = require('./configManager');
 const { enhancedCheck } = require('./apiUtils');
-const { scheduleTasks } = require('./scheduledTasks');
+const { updateGuildCronJobs } = require('./scheduledTasks');
+const logger = require('./logger');
 
 async function handleInteraction(interaction) {
-    console.log(`[handleInteraction] Interaction received: ${interaction.commandName}`);
+    logger.info(`Interaction received: ${interaction.commandName}`);
 
     if (!interaction.isCommand()) {
-        console.log('[handleInteraction] Interaction is not a command. Ignoring.');
+        logger.info('Interaction is not a command. Ignoring.');
         return;
     }
 
@@ -40,8 +41,11 @@ async function handleInteraction(interaction) {
                 await interaction.reply('Unknown command.');
         }
     } catch (error) {
-        console.error(`[handleInteraction] Error handling ${commandName}:`, error);
-        await interaction.reply('An error occurred while processing your command.');
+        logger.error(`Error handling ${commandName}:`, error);
+        // Only reply if we haven't already
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply('An error occurred while processing your command.');
+        }
     }
 }
 
@@ -61,14 +65,14 @@ async function handleAddUser(interaction) {
     const targetUser = interaction.options.getUser('discord_user');
     const discordId = targetUser ? targetUser.id : null;
     
-    console.log(`[handleAddUser] Adding user: ${username} with Discord ID: ${discordId}`);
+    logger.info(`Adding user: ${username} with Discord ID: ${discordId}`);
     const addResult = await addUser(interaction.guildId, username, discordId);
     await interaction.reply(addResult);
 }
 
 async function handleRemoveUser(interaction) {
     const username = interaction.options.getString('username');
-    console.log(`[handleRemoveUser] Removing user: ${username}`);
+    logger.info(`Removing user: ${username}`);
     const removeResult = await removeUser(interaction.guildId, username);
     await interaction.reply(removeResult);
 }
@@ -114,24 +118,25 @@ async function handleManageCron(interaction) {
     }
 
     const subcommand = interaction.options.getSubcommand();
+    let result;
 
     switch (subcommand) {
         case 'add': {
             const hours = interaction.options.getInteger('hours');
             const minutes = interaction.options.getInteger('minutes');
-            const result = await addCronJob(interaction.guildId, hours, minutes);
+            result = await addCronJob(interaction.guildId, hours, minutes);
             await interaction.reply(result);
-            // Reschedule tasks to apply the new schedule
-            await scheduleTasks(interaction.client);
+            // Update cron jobs after adding
+            await updateGuildCronJobs(interaction.guildId);
             break;
         }
         case 'remove': {
             const hours = interaction.options.getInteger('hours');
             const minutes = interaction.options.getInteger('minutes');
-            const result = await removeCronJob(interaction.guildId, hours, minutes);
+            result = await removeCronJob(interaction.guildId, hours, minutes);
             await interaction.reply(result);
-            // Reschedule tasks to apply the removed schedule
-            await scheduleTasks(interaction.client);
+            // Update cron jobs after removing
+            await updateGuildCronJobs(interaction.guildId);
             break;
         }
         case 'list': {
