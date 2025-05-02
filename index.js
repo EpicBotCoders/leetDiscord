@@ -2,41 +2,41 @@
 
 // Import necessary modules
 const { Client, GatewayIntentBits } = require('discord.js');
-const cron = require('node-cron');
-const { token, channelId } = require('./config.json');
-const { registerCommands } = require('./modules/commandRegistration');
-const { runCheck, scheduleTasks } = require('./modules/scheduledTasks');
 const { handleInteraction } = require('./modules/interactionHandler');
+const { registerCommands } = require('./modules/commandRegistration');
+const { loadConfig } = require('./modules/configManager');
+const { connectDB } = require('./modules/models/db');
+const logger = require('./modules/logger');
+const { initializeScheduledTasks } = require('./modules/scheduledTasks');
 
-const client = new Client({ 
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
-});
-
-client.on('interactionCreate', async (interaction) => {
+async function main() {
     try {
-        console.log(`[interactionCreate] Interaction received: ${interaction.commandName}`);
-        await handleInteraction(interaction);
+        // Connect to MongoDB first
+        await connectDB();
+
+        const config = await loadConfig();
+        const client = new Client({
+            intents: [
+                GatewayIntentBits.Guilds,
+                GatewayIntentBits.GuildMessages
+            ]
+        });
+
+        client.once('ready', () => {
+            logger.info('Bot is ready!');
+            registerCommands(client.application.id);
+            initializeScheduledTasks(client);
+        });
+
+        client.on('interactionCreate', async interaction => {
+            await handleInteraction(interaction);
+        });
+
+        await client.login(config.token);
     } catch (error) {
-        console.error('[interactionCreate] Error handling interaction:', error);
+        logger.error('Failed to start the bot:', error);
+        process.exit(1);
     }
-});
+}
 
-client.once('ready', async () => {
-    try {
-        console.log(`Logged in as ${client.user.tag}`);
-        await registerCommands(client.user.id);
-
-        // Schedule tasks dynamically from config
-        scheduleTasks(client);
-    } catch (error) {
-        console.error('[Ready] Error during client ready event:', error);
-    }
-});
-
-client.login(token).catch(error => {
-    console.error('[Login] Error logging in:', error);
-});
+main();

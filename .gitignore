@@ -3,3 +3,5 @@ config.json
 .env
 *.log
 package-lock.json
+coverage/
+.nyc_output/

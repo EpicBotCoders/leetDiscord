@@ -1,40 +1,153 @@
-const { addUser, removeUser } = require('./configManager');
+const { addUser, removeUser, getGuildUsers, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs } = require('./configManager');
 const { enhancedCheck } = require('./apiUtils');
+const { updateGuildCronJobs } = require('./scheduledTasks');
+const logger = require('./logger');
 
-// Handles interaction events
 async function handleInteraction(interaction) {
-    console.log(`[handleInteraction] Interaction received: ${interaction.commandName}`);
+    logger.info(`Interaction received: ${interaction.commandName}`);
 
     if (!interaction.isCommand()) {
-        console.log('[handleInteraction] Interaction is not a command. Ignoring.');
+        logger.info('Interaction is not a command. Ignoring.');
         return;
     }
 
-    const { commandName } = interaction;
-    const config = require('../config.json');
-    const users = config.users;
+    const { commandName, guildId } = interaction;
+    if (!guildId) {
+        await interaction.reply('This command can only be used in a server.');
+        return;
+    }
 
-    if (commandName === 'check') {
-        console.log('[handleInteraction] Handling check command.');
-        await interaction.deferReply();
-        const checkResult = await enhancedCheck(users, interaction.client, config.channelId);
-        await interaction.editReply(checkResult);
-    } else if (commandName === 'adduser') {
-        const username = interaction.options.getString('username');
-        console.log(`[handleInteraction] Adding user: ${username}`);
-        const addResult = await addUser(username);
-        await interaction.reply(addResult);
-    } else if (commandName === 'removeuser') {
-        const username = interaction.options.getString('username');
-        console.log(`[handleInteraction] Removing user: ${username}`);
-        const removeResult = await removeUser(username);
-        await interaction.reply(removeResult);
-    } else if (commandName === 'listusers') {
-        console.log('[handleInteraction] Listing all tracked users.');
-        await interaction.reply(`Currently tracking these users:\n${users.map(u => `• ${u}`).join('\n')}`);
-    } else {
-        console.log(`[handleInteraction] Unknown command: ${commandName}`);
-        await interaction.reply('Unknown command.');
+    try {
+        switch (commandName) {
+            case 'check':
+                await handleCheck(interaction);
+                break;
+            case 'adduser':
+                await handleAddUser(interaction);
+                break;
+            case 'removeuser':
+                await handleRemoveUser(interaction);
+                break;
+            case 'listusers':
+                await handleListUsers(interaction);
+                break;
+            case 'setchannel':
+                await handleSetChannel(interaction);
+                break;
+            case 'managecron':
+                await handleManageCron(interaction);
+                break;
+            default:
+                await interaction.reply('Unknown command.');
+        }
+    } catch (error) {
+        logger.error(`Error handling ${commandName}:`, error);
+        // Only reply if we haven't already
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply('An error occurred while processing your command.');
+        }
+    }
+}
+
+async function handleCheck(interaction) {
+    await interaction.deferReply();
+    const users = Object.keys(await getGuildUsers(interaction.guildId));
+    if (users.length === 0) {
+        await interaction.editReply('No users are being tracked in this server.');
+        return;
+    }
+    const checkResult = await enhancedCheck(users, interaction.client, interaction.channelId);
+    await interaction.editReply(checkResult);
+}
+
+async function handleAddUser(interaction) {
+    const username = interaction.options.getString('username');
+    const targetUser = interaction.options.getUser('discord_user');
+    const discordId = targetUser ? targetUser.id : null;
+    
+    logger.info(`Adding user: ${username} with Discord ID: ${discordId}`);
+    const addResult = await addUser(interaction.guildId, username, discordId);
+    await interaction.reply(addResult);
+}
+
+async function handleRemoveUser(interaction) {
+    const username = interaction.options.getString('username');
+    logger.info(`Removing user: ${username}`);
+    const removeResult = await removeUser(interaction.guildId, username);
+    await interaction.reply(removeResult);
+}
+
+async function handleListUsers(interaction) {
+    const users = await getGuildUsers(interaction.guildId);
+    const userList = Object.entries(users)
+        .map(([leetcode, discordId]) => 
+            discordId ? 
+            `• ${leetcode} (<@${discordId}>)` : 
+            `• ${leetcode}`
+        )
+        .join('\n');
+    
+    await interaction.reply(
+        userList ? 
+        `Currently tracking these users:\n${userList}` : 
+        'No users are being tracked in this server.'
+    );
+}
+
+async function handleSetChannel(interaction) {
+    if (!interaction.memberPermissions.has('MANAGE_CHANNELS')) {
+        await interaction.reply('You need the Manage Channels permission to use this command.');
+        return;
+    }
+
+    const channel = interaction.options.getChannel('channel');
+    if (!channel || !channel.isTextBased()) {
+        await interaction.reply('Please specify a valid text channel.');
+        return;
+    }
+
+    await initializeGuildConfig(interaction.guildId, channel.id);
+    await updateGuildChannel(interaction.guildId, channel.id);
+    await interaction.reply(`Announcement channel set to ${channel}.`);
+}
+
+async function handleManageCron(interaction) {
+    if (!interaction.memberPermissions.has('MANAGE_CHANNELS')) {
+        await interaction.reply('You need the Manage Channels permission to use this command.');
+        return;
+    }
+
+    const subcommand = interaction.options.getSubcommand();
+    let result;
+
+    switch (subcommand) {
+        case 'add': {
+            const hours = interaction.options.getInteger('hours');
+            const minutes = interaction.options.getInteger('minutes');
+            result = await addCronJob(interaction.guildId, hours, minutes);
+            await interaction.reply(result);
+            // Update cron jobs after adding
+            await updateGuildCronJobs(interaction.guildId);
+            break;
+        }
+        case 'remove': {
+            const hours = interaction.options.getInteger('hours');
+            const minutes = interaction.options.getInteger('minutes');
+            result = await removeCronJob(interaction.guildId, hours, minutes);
+            await interaction.reply(result);
+            // Update cron jobs after removing
+            await updateGuildCronJobs(interaction.guildId);
+            break;
+        }
+        case 'list': {
+            const times = await listCronJobs(interaction.guildId);
+            if (times.length === 0) {
+                await interaction.reply('No scheduled check times configured.');
+            } else {
+                await interaction.reply(`Scheduled check times:\n${times.join('\n')}`);
+            }
+            break;
+        }
     }
 }
 
