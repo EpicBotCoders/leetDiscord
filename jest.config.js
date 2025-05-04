@@ -11,5 +11,7 @@ module.exports = {
         '/logs/'
     ],
     verbose: true,
-    setupFilesAfterEnv: ['./jest.setup.js']
+    setupFilesAfterEnv: ['./jest.setup.js'],
+    testTimeout: 30000, // Increased timeout for MongoDB operations
+    globalSetup: './jest.global-setup.js'
 };

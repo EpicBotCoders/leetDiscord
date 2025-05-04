@@ -56,6 +56,10 @@ When the bot joins a new server:
 - Multi-server support with independent configurations
 - MongoDB Atlas integration for reliable data storage
 - Per-server announcement channels
+- Permission-based command system:
+  - Users can add/remove themselves
+  - Admins can manage all users
+  - Channel management requires "Manage Channels" permission
 - Optional Discord user mentions when reporting challenge status
 - Flexible cron job management for check schedules
 - Detailed problem information in status updates:
@@ -63,7 +67,25 @@ When the bot joins a new server:
   - Topic tags
   - Acceptance rate
   - Direct link to problem
-- Winston-based logging system
+- Complete submission tracking:
+  - Daily challenge completion history
+  - Submission timestamps
+  - Problem difficulty tracking
+  - Duplicate submission prevention
+  - Built-in retry and error handling
+- Robust timestamp handling:
+  - Support for Unix timestamps
+  - Support for ISO string dates
+  - Fallback handling for invalid dates
+- Permission handling:
+  - Automatic permission checks
+  - Guild owner notifications for permission issues
+  - Detailed error feedback
+- Winston-based logging system with:
+  - Error tracking
+  - Warning notifications
+  - Debug information
+  - Activity logging
 - Automated user tracking and status updates
 
 ## Environment Variables
@@ -100,6 +122,25 @@ If you're upgrading from a previous version that used config.json:
 
 ## Changelog
 
+### v2.1.0 (2025-05-04)
+- ✨ Added submission tracking with MongoDB
+- 🔄 Improved timestamp handling with support for:
+  - Unix timestamps (seconds/milliseconds)
+  - ISO string dates
+  - Fallback handling for invalid dates
+- 🔒 Enhanced permission handling:
+  - Automatic permission checks before sending messages
+  - Guild owner notifications for permission issues
+  - Detailed error feedback
+- 🧪 Added comprehensive test coverage:
+  - MongoDB integration tests
+  - Timestamp parsing tests
+  - Permission handling tests
+  - API interaction mocks
+- 📝 Improved error logging and debugging
+- ⚡️ Added duplicate submission prevention
+- 🚀 Added retry mechanisms for API failures
+
 ### v2.0.0 (2025-05-02)
 - 🎉 Migrated from JSON file storage to MongoDB Atlas
 - ✨ Added flexible cron job management with /managecron command
@@ -116,6 +157,50 @@ If you're upgrading from a previous version that used config.json:
 - Multi-server support
 - User management commands
 - Scheduled checks
+
+## Testing
+
+The project includes a comprehensive test suite using Jest. To run the tests:
+
+```bash
+npm test
+```
+
+### Test Coverage
+
+Tests cover all major functionality including:
+- DailySubmission model validation
+- Timestamp parsing and handling
+- Permission checks and error handling
+- API interactions and response handling
+- Database operations
+- Discord message handling
+
+The test suite uses:
+- mongodb-memory-server for database testing
+- axios-mock-adapter for API mocking
+- Jest mocks for Discord.js interactions
+- Winston logger mocking
+- Comprehensive assertion coverage
+
+Test coverage reports are available in the coverage/ directory after running tests.
+
+### Running Specific Tests
+
+Run a specific test suite:
+```bash
+npm test -- apiUtils
+```
+
+Watch mode for development:
+```bash
+npm run test:watch
+```
+
+Generate coverage report:
+```bash
+npm run test:coverage
+```
 
 ## Contributing
 
