@@ -1,6 +1,28 @@
 # LeetDiscord Bot
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+[![Security Policy](https://img.shields.io/badge/Security-Policy-red.svg)](SECURITY.md)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 This Discord bot tracks LeetCode activity for specified users and posts updates to Discord channels. It supports multiple servers (guilds) with per-server configurations, storing data in MongoDB Atlas.
+
+## Table of Contents
+- [Prerequisites](#prerequisites)
+- [Setup Instructions](#setup-instructions)
+- [Server Setup](#server-setup)
+- [Available Commands](#available-commands)
+- [Features](#features)
+- [Environment Variables](#environment-variables)
+- [Security](#security)
+- [Error Handling](#error-handling)
+- [Data Migration](#data-migration)
+- [Contributing](#contributing)
+- [Code of Conduct](#code-of-conduct)
+- [Security](#security)
+- [Testing](#testing)
+- [License](#license)
+- [Changelog](#changelog)
 
 ## Prerequisites
 
@@ -98,6 +120,10 @@ When the bot joins a new server:
 | MONGODB_URI | MongoDB Atlas connection string |
 | NODE_ENV | Set to 'production' for production logging levels |
 
+## Security
+
+For details about our security practices and how to report security issues, please see our [Security Policy](SECURITY.md).
+
 ## Error Handling
 
 - The bot includes comprehensive error logging
@@ -115,52 +141,22 @@ If you're upgrading from a previous version that used config.json:
    - Update config.json to only contain the bot token
 2. After migration, update your environment variables in .env
 
-## Security Notes
+## Contributing
 
-- Never commit your `.env` file or `config.json` to version control
-- Add both files to your `.gitignore`
-- Keep your MongoDB connection string private
-- Use appropriate Discord bot token restrictions
+We love contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to:
+- Set up your development environment
+- Run tests
+- Submit pull requests
+- Report bugs
+- Propose new features
 
-## Changelog
+## Code of Conduct
 
-### v2.1.0 (2025-05-04)
-- ✨ Added submission tracking with MongoDB
-- 🎉 Added welcome message when bot joins a server
-- ➕ Added /botinfo command for quick bot information access
-- 🔄 Improved timestamp handling with support for:
-  - Unix timestamps (seconds/milliseconds)
-  - ISO string dates
-  - Fallback handling for invalid dates
-- 🔒 Enhanced permission handling:
-  - Automatic permission checks before sending messages
-  - Guild owner notifications for permission issues
-  - Detailed error feedback
-- 🧪 Added comprehensive test coverage:
-  - MongoDB integration tests
-  - Timestamp parsing tests
-  - Permission handling tests
-  - API interaction mocks
-- 📝 Improved error logging and debugging
-- ⚡️ Added duplicate submission prevention
-- 🚀 Added retry mechanisms for API failures
+We are committed to fostering an open and welcoming environment. Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 
-### v2.0.0 (2025-05-02)
-- 🎉 Migrated from JSON file storage to MongoDB Atlas
-- ✨ Added flexible cron job management with /managecron command
-- 🔄 Enhanced status updates with detailed problem information
-- 📝 Improved logging system with Winston
-- 🔒 Moved sensitive data to environment variables
-- 🐛 Fixed user tracking and removal issues
-- 🚀 Improved error handling and interaction responses
-- 📊 Added debug logging for better troubleshooting
+## Security
 
-### v1.0.0
-- Initial release with JSON-based configuration
-- Basic LeetCode activity tracking
-- Multi-server support
-- User management commands
-- Scheduled checks
+For details about our security practices and how to report security issues, please see our [Security Policy](SECURITY.md).
 
 ## Testing
 
@@ -206,7 +202,47 @@ Generate coverage report:
 npm run test:coverage
 ```
 
-## Contributing
+## License
 
-Feel free to submit issues and enhancement requests!
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Changelog
+
+### v2.1.0 (2025-05-04)
+- ✨ Added submission tracking with MongoDB
+- 🎉 Added welcome message when bot joins a server
+- ➕ Added /botinfo command for quick bot information access
+- 🔄 Improved timestamp handling with support for:
+  - Unix timestamps (seconds/milliseconds)
+  - ISO string dates
+  - Fallback handling for invalid dates
+- 🔒 Enhanced permission handling:
+  - Automatic permission checks before sending messages
+  - Guild owner notifications for permission issues
+  - Detailed error feedback
+- 🧪 Added comprehensive test coverage:
+  - MongoDB integration tests
+  - Timestamp parsing tests
+  - Permission handling tests
+  - API interaction mocks
+- 📝 Improved error logging and debugging
+- ⚡️ Added duplicate submission prevention
+- 🚀 Added retry mechanisms for API failures
+
+### v2.0.0 (2025-05-02)
+- 🎉 Migrated from JSON file storage to MongoDB Atlas
+- ✨ Added flexible cron job management with /managecron command
+- 🔄 Enhanced status updates with detailed problem information
+- 📝 Improved logging system with Winston
+- 🔒 Moved sensitive data to environment variables
+- 🐛 Fixed user tracking and removal issues
+- 🚀 Improved error handling and interaction responses
+- 📊 Added debug logging for better troubleshooting
+
+### v1.0.0
+- Initial release with JSON-based configuration
+- Basic LeetCode activity tracking
+- Multi-server support
+- User management commands
+- Scheduled checks
 
