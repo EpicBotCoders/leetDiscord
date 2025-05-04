@@ -46,6 +46,7 @@ When the bot joins a new server:
 - `/removeuser` - Remove a LeetCode username from tracking
 - `/listusers` - List all tracked users in the server
 - `/check` - Manually trigger a check of today's LeetCode challenge status
+- `/botinfo` - Display information about the bot and its GitHub repository
 - `/managecron` - Manage scheduled check times (requires Manage Channels permission)
   - `/managecron add` - Add a new check time (24h format)
   - `/managecron remove` - Remove an existing check time
@@ -56,6 +57,7 @@ When the bot joins a new server:
 - Multi-server support with independent configurations
 - MongoDB Atlas integration for reliable data storage
 - Per-server announcement channels
+- Automated welcome message with setup instructions
 - Permission-based command system:
   - Users can add/remove themselves
   - Admins can manage all users
@@ -124,6 +126,8 @@ If you're upgrading from a previous version that used config.json:
 
 ### v2.1.0 (2025-05-04)
 - ✨ Added submission tracking with MongoDB
+- 🎉 Added welcome message when bot joins a server
+- ➕ Added /botinfo command for quick bot information access
 - 🔄 Improved timestamp handling with support for:
   - Unix timestamps (seconds/milliseconds)
   - ISO string dates

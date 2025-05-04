@@ -78,6 +78,10 @@ const commands = [
             subcommand
                 .setName('list')
                 .setDescription('List all scheduled check times'))
+        .toJSON(),
+    new SlashCommandBuilder()
+        .setName('botinfo')
+        .setDescription('Display information about the bot and its GitHub repository')
         .toJSON()
 ];
 

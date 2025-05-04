@@ -37,6 +37,9 @@ async function handleInteraction(interaction) {
             case 'managecron':
                 await handleManageCron(interaction);
                 break;
+            case 'botinfo':
+                await handleBotInfo(interaction);
+                break;
             default:
                 await interaction.reply('Unknown command.');
         }
@@ -206,6 +209,34 @@ async function handleManageCron(interaction) {
             break;
         }
     }
+}
+
+async function handleBotInfo(interaction) {
+    const botInfoEmbed = {
+        color: 0x00ff00,
+        title: '📚 LeetCode Discord Bot Info',
+        description: 'I help track LeetCode activity for your server members. You can find my source code and contribute at:\nhttps://github.com/mochiron-desu/leetDiscord',
+        fields: [
+            {
+                name: '🎯 Purpose',
+                value: 'Track and encourage daily LeetCode challenge completion within your Discord community'
+            },
+            {
+                name: '🤖 Features',
+                value: '• Daily challenge tracking\n• Automatic progress checks\n• Multi-server support\n• User mentions\n• Flexible scheduling'
+            },
+            {
+                name: '💡 Basic Commands',
+                value: '`/setchannel` - Set announcement channel\n`/adduser` - Track a user\n`/check` - Manual progress check\n`/managecron` - Schedule checks'
+            }
+        ],
+        footer: {
+            text: 'Type / to see all available commands!'
+        },
+        timestamp: new Date()
+    };
+
+    await interaction.reply({ embeds: [botInfoEmbed] });
 }
 
 module.exports = { handleInteraction };
