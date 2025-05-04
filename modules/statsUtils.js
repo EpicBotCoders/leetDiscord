@@ -7,29 +7,28 @@ const DailySubmission = require('./models/DailySubmission');
  * @returns {Promise<Number>} - The current streak count.
  */
 async function calculateStreak(userId, guildId) {
-    const submissions = await DailySubmission.find({
+    const latestSubmission = await DailySubmission.findOne({
         userId,
         guildId,
         completed: true
     }).sort({ date: -1 });
 
-    let streak = 0;
-    let currentDate = new Date();
-
-    for (const submission of submissions) {
-        const submissionDate = new Date(submission.date);
-        if (
-            currentDate.toDateString() === submissionDate.toDateString() ||
-            currentDate.toDateString() === new Date(submissionDate.setDate(submissionDate.getDate() + 1)).toDateString()
-        ) {
-            streak++;
-            currentDate = submission.date;
-        } else {
-            break;
-        }
+    if (!latestSubmission) {
+        return 0;
     }
 
-    return streak;
+    // Check if the latest submission is from today or yesterday
+    const now = new Date();
+    const submissionDate = new Date(latestSubmission.date);
+    const isToday = submissionDate.toDateString() === now.toDateString();
+    const isYesterday = submissionDate.toDateString() === new Date(now.setDate(now.getDate() - 1)).toDateString();
+
+    // If the latest submission is not from today or yesterday, streak is broken
+    if (!isToday && !isYesterday) {
+        return 0;
+    }
+
+    return latestSubmission.streakCount;
 }
 
 /**
@@ -64,17 +63,26 @@ async function calculateCompletionRates(userId, guildId, period) {
  * @returns {Promise<Array>} - Leaderboard data.
  */
 async function generateLeaderboard(guildId) {
-    const users = await DailySubmission.aggregate([
-        { $match: { guildId, completed: true } },
-        { $group: { _id: '$userId', streak: { $sum: 1 } } },
-        { $sort: { streak: -1 } },
-        { $limit: 10 }
-    ]);
+    // Get latest submission for each user to check their current streak
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
 
-    return users.map((user, index) => ({
+    // Find latest submissions within today or yesterday that have a streak
+    const users = await DailySubmission.find({
+        guildId,
+        completed: true,
+        date: {
+            $gte: new Date(yesterday.setHours(0, 0, 0, 0))
+        },
+        streakCount: { $gt: 0 }
+    }).sort({ streakCount: -1, date: -1 }).limit(10);
+
+    // Map to leaderboard format
+    return users.map((submission, index) => ({
         rank: index + 1,
-        userId: user._id,
-        streak: user.streak
+        userId: submission.userId,
+        streak: submission.streakCount
     }));
 }
 
