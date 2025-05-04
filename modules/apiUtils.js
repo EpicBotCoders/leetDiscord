@@ -77,7 +77,6 @@ async function enhancedCheck(users, client, channelId) {
         const topicTags = problem.topicTags ? problem.topicTags.map(tag => tag.name).join(', ') : 'N/A';
         const stats = problem.stats ? JSON.parse(problem.stats) : { acRate: 'N/A' };
 
-        // Create problem info field
         const problemField = {
             name: 'Problem Info',
             value: `**${problem.title || 'Unknown Problem'}** (${problem.difficulty || 'N/A'})\n` +
@@ -87,7 +86,7 @@ async function enhancedCheck(users, client, channelId) {
         };
         
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        today.setUTCHours(0, 0, 0, 0);
 
         // Create individual fields for each user status
         const userStatusFields = await Promise.all(users.map(async username => {
@@ -108,7 +107,7 @@ async function enhancedCheck(users, client, channelId) {
                     // Check if we already have a submission record for today
                     const existingSubmission = await DailySubmission.findOne({
                         guildId: guild.id,
-                        userId: userId,
+                        userId,
                         leetcodeUsername: username,
                         questionSlug: dailyData,
                         date: {

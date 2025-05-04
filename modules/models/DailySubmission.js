@@ -18,7 +18,13 @@ const dailySubmissionSchema = new mongoose.Schema({
     date: {
         type: Date,
         required: true,
-        index: true
+        index: true,
+        set: function(val) {
+            // Normalize date to midnight UTC
+            const date = new Date(val);
+            date.setUTCHours(0, 0, 0, 0);
+            return date;
+        }
     },
     questionTitle: {
         type: String,
@@ -44,7 +50,7 @@ const dailySubmissionSchema = new mongoose.Schema({
     },
     streakCount: {
         type: Number,
-        required: false,
+        required: true,
         default: 0
     }
 });
@@ -52,28 +58,33 @@ const dailySubmissionSchema = new mongoose.Schema({
 // Compound index for efficient querying of user submissions within a guild
 dailySubmissionSchema.index({ guildId: 1, userId: 1, date: -1 });
 
-// Add pre-save middleware after the schema definition
+// Pre-save middleware to handle streak calculation
 dailySubmissionSchema.pre('save', async function(next) {
-    if (this.isNew && this.completed) {
-        const yesterday = new Date(this.date);
-        yesterday.setDate(yesterday.getDate() - 1);
+    try {
+        if (this.isNew && this.completed) {
+            const yesterday = new Date(this.date);
+            yesterday.setDate(yesterday.getDate() - 1);
+            yesterday.setUTCHours(0, 0, 0, 0);
 
-        // Find yesterday's submission
-        const prevSubmission = await this.constructor.findOne({
-            userId: this.userId,
-            guildId: this.guildId,
-            completed: true,
-            date: {
-                $gte: new Date(yesterday.setHours(0, 0, 0, 0)),
-                $lt: new Date(yesterday.setHours(23, 59, 59, 999))
-            }
-        });
+            // Find yesterday's submission
+            const prevSubmission = await this.constructor.findOne({
+                userId: this.userId,
+                guildId: this.guildId,
+                completed: true,
+                date: yesterday
+            }).sort({ date: -1 });
 
-        // If there was a submission yesterday, increment that streak
-        // Otherwise start a new streak at 1
-        this.streakCount = prevSubmission ? prevSubmission.streakCount + 1 : 1;
+            // If there was a submission yesterday, increment streak
+            // Otherwise start a new streak at 1
+            this.streakCount = prevSubmission ? prevSubmission.streakCount + 1 : 1;
+        } else if (!this.completed) {
+            // Reset streak if submission is marked as incomplete
+            this.streakCount = 0;
+        }
+        next();
+    } catch (error) {
+        next(error);
     }
-    next();
 });
 
 module.exports = mongoose.model('DailySubmission', dailySubmissionSchema);

@@ -158,7 +158,7 @@ async function scheduleDailyCheck(client, guildId, channelId, schedule) {
                                     questionSlug: dailySlug,
                                     difficulty: problem.difficulty,
                                     submissionTime,
-                                    completed: true,
+                                    completed: true, // Explicitly set completed to true
                                     streakCount: await calculateStreak(discordId || username, guildId)
                                 });
                             }

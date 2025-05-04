@@ -1,0 +1,12 @@
+{
+    "servers": {
+        "mongodbLeetCode": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "mcp-mongo-server",
+                "mongodb+srv://new-admin:OJhhcbw3LFrZwbxC@leetcode.vco1osy.mongodb.net/?retryWrites=true&w=majority&appName=leetCode"
+            ]
+        }
+    }
+}
