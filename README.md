@@ -35,6 +35,7 @@ This Discord bot tracks LeetCode activity for specified users and posts updates 
     - [Running Specific Tests](#running-specific-tests)
   - [License](#license)
   - [Changelog](#changelog)
+    - [v2.1.1 (2025-05-04)](#v211-2025-05-04)
     - [v2.1.0 (2025-05-04)](#v210-2025-05-04)
     - [v2.0.0 (2025-05-02)](#v200-2025-05-02)
     - [v1.0.0](#v100)
@@ -95,11 +96,27 @@ When the bot joins a new server:
 - MongoDB Atlas integration for reliable data storage
 - Per-server announcement channels
 - Automated welcome message with setup instructions
+- Advanced Streak Tracking System:
+  - Daily streak counting
+  - Automatic streak maintenance
+  - Streak preservation across timezone boundaries
+  - Streak reset on missed days
+  - Per-guild streak leaderboards
+- Submission Tracking and Validation:
+  - Normalized UTC timestamp handling
+  - Duplicate submission prevention
+  - Accurate streak counting with date normalization
+  - Complete submission history
+- User Progress Features:
+  - Daily challenge completion tracking
+  - Individual streak statistics
+  - Weekly and monthly completion rates
+  - Server-wide leaderboards
 - Permission-based command system:
   - Users can add/remove themselves
   - Admins can manage all users
   - Channel management requires "Manage Channels" permission
-- Optional Discord user mentions when reporting challenge status
+  - Optional Discord user mentions when reporting challenge status
 - Flexible cron job management for check schedules
 - Detailed problem information in status updates:
   - Problem difficulty
@@ -222,6 +239,17 @@ npm run test:coverage
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Changelog
+
+### v2.1.1 (2025-05-04)
+- ✨ Enhanced streak tracking system
+  - Improved date handling with UTC normalization
+  - Fixed streak counting across timezone boundaries
+  - Added streak preservation logic
+  - Enhanced duplicate submission detection
+- 🔄 Improved submission validation
+- 📊 Added per-guild leaderboards
+- ⚡️ Optimized database queries
+- 🐛 Fixed streak reset issues
 
 ### v2.1.0 (2025-05-04)
 - ✨ Added submission tracking with MongoDB
