@@ -1,4 +1,4 @@
-    const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 const dailySubmissionSchema = new mongoose.Schema({
     guildId: {
@@ -36,6 +36,16 @@ const dailySubmissionSchema = new mongoose.Schema({
     submissionTime: {
         type: Date,
         required: true
+    },
+    completed: {
+        type: Boolean,
+        required: true,
+        default: false
+    },
+    streakCount: {
+        type: Number,
+        required: false,
+        default: 0
     }
 });
 
