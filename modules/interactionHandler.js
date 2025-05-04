@@ -65,6 +65,23 @@ async function handleAddUser(interaction) {
     const targetUser = interaction.options.getUser('discord_user');
     const discordId = targetUser ? targetUser.id : null;
     
+    // Check permissions - using correct permission flag 'ManageRoles'
+    const hasPermission = interaction.member.permissions.has('ManageRoles') || interaction.member.permissions.has('Administrator');
+    
+    // If no permission, only allow adding self
+    if (!hasPermission) {
+        // If trying to add someone else's Discord account
+        if (targetUser && targetUser.id !== interaction.user.id) {
+            await interaction.reply('You can only add yourself to the tracking list. You need Manage Roles permission to add other users.');
+            return;
+        }
+        // If no Discord user specified, ensure the leetcode username matches their Discord username
+        if (!targetUser && username.toLowerCase() !== interaction.user.username.toLowerCase()) {
+            await interaction.reply('You can only add yourself to the tracking list. Please use your Discord username as the LeetCode username or mention yourself.');
+            return;
+        }
+    }
+    
     logger.info(`Adding user: ${username} with Discord ID: ${discordId}`);
     const addResult = await addUser(interaction.guildId, username, discordId);
     await interaction.reply(addResult);
@@ -72,6 +89,21 @@ async function handleAddUser(interaction) {
 
 async function handleRemoveUser(interaction) {
     const username = interaction.options.getString('username');
+    
+    // Check permissions - using correct permission flag 'ManageRoles'
+    const hasPermission = interaction.member.permissions.has('ManageRoles') || interaction.member.permissions.has('Administrator');
+    
+    // If no permission, verify they're removing themselves
+    if (!hasPermission) {
+        const guildUsers = await getGuildUsers(interaction.guildId);
+        const userEntry = Object.entries(guildUsers).find(([leetcode]) => leetcode === username);
+        
+        if (!userEntry || userEntry[1] !== interaction.user.id) {
+            await interaction.reply('You can only remove yourself from the tracking list. You need Manage Roles permission to remove other users.');
+            return;
+        }
+    }
+    
     logger.info(`Removing user: ${username}`);
     const removeResult = await removeUser(interaction.guildId, username);
     await interaction.reply(removeResult);
@@ -95,7 +127,7 @@ async function handleListUsers(interaction) {
 }
 
 async function handleSetChannel(interaction) {
-    if (!interaction.memberPermissions.has('MANAGE_CHANNELS')) {
+    if (!interaction.memberPermissions.has('ManageChannels')) {
         await interaction.reply('You need the Manage Channels permission to use this command.');
         return;
     }
@@ -137,7 +169,7 @@ async function handleSetChannel(interaction) {
 }
 
 async function handleManageCron(interaction) {
-    if (!interaction.memberPermissions.has('MANAGE_CHANNELS')) {
+    if (!interaction.memberPermissions.has('ManageChannels')) {
         await interaction.reply('You need the Manage Channels permission to use this command.');
         return;
     }
