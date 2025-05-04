@@ -1,5 +1,6 @@
 const axios = require('axios');
 const logger = require('./logger');
+const DailySubmission = require('./models/DailySubmission');
 
 // Fetch today’s daily challenge slug
 async function getDailySlug() {
@@ -37,6 +38,33 @@ async function checkUser(username, slug) {
     }
 }
 
+// Helper function to safely parse submission timestamp
+function parseSubmissionTime(submission) {
+    if (!submission.timestamp) {
+        logger.warn('No timestamp in submission:', submission);
+        return new Date(); // Fallback to current time if no timestamp
+    }
+
+    // Try parsing as unix timestamp (seconds or milliseconds)
+    const timestamp = parseInt(submission.timestamp);
+    if (!isNaN(timestamp)) {
+        // Check if it's in seconds (Unix timestamp) or milliseconds
+        const date = timestamp > 9999999999 ? new Date(timestamp) : new Date(timestamp * 1000);
+        if (date.toString() !== 'Invalid Date') {
+            return date;
+        }
+    }
+
+    // Try parsing as ISO string
+    const isoDate = new Date(submission.timestamp);
+    if (isoDate.toString() !== 'Invalid Date') {
+        return isoDate;
+    }
+
+    logger.warn(`Invalid timestamp format: ${submission.timestamp}, using current time`);
+    return new Date(); // Fallback to current time if parsing fails
+}
+
 // Enhanced check function with more problem details
 async function enhancedCheck(users, client, channelId) {
     logger.info('Starting enhanced check for users:', users);
@@ -57,12 +85,59 @@ async function enhancedCheck(users, client, channelId) {
                    `[View Problem](${problem.url || 'N/A'})`
         };
         
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
         // Create individual fields for each user status
         const userStatusFields = await Promise.all(users.map(async username => {
-            const solved = await checkUser(username, dailyData);
+            const submissions = await getUserSubmissions(username);
+            const todaysSubmission = submissions.find(sub => 
+                sub.titleSlug === dailyData && 
+                sub.statusDisplay === 'Accepted'
+            );
+
+            // If submission is found, record it in DailySubmission
+            if (todaysSubmission) {
+                try {
+                    const channel = await client.channels.fetch(channelId);
+                    const guild = channel.guild;
+                    const member = await guild.members.fetch({ user: username, force: true }).catch(() => null);
+                    const userId = member ? member.id : username;
+
+                    // Check if we already have a submission record for today
+                    const existingSubmission = await DailySubmission.findOne({
+                        guildId: guild.id,
+                        userId: userId,
+                        leetcodeUsername: username,
+                        questionSlug: dailyData,
+                        date: {
+                            $gte: today,
+                            $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+                        }
+                    });
+
+                    // Only create new submission if one doesn't exist
+                    if (!existingSubmission) {
+                        const submissionTime = parseSubmissionTime(todaysSubmission);
+                        await DailySubmission.create({
+                            guildId: guild.id,
+                            userId,
+                            leetcodeUsername: username,
+                            date: today,
+                            questionTitle: problem.title,
+                            questionSlug: dailyData,
+                            difficulty: problem.difficulty,
+                            submissionTime
+                        });
+                    }
+                } catch (error) {
+                    logger.error(`Error recording submission for ${username}:`, error);
+                }
+            }
+
             return {
                 name: username,
-                value: solved ? '✅ Completed' : '❌ Not completed',
+                value: todaysSubmission ? '✅ Completed' : '❌ Not completed',
                 inline: true
             };
         }));
