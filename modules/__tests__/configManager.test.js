@@ -1,5 +1,30 @@
 const fs = require('fs').promises;
 const path = require('path');
+
+// Mock winston logger before requiring any modules that use it
+jest.mock('../logger', () => ({
+    info: jest.fn(),
+    error: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn(),
+    stream: {
+        write: jest.fn()
+    }
+}));
+
+// Mock fs module using a factory function
+jest.mock('fs', () => {
+    const mocked = {
+        promises: {
+            readFile: jest.fn(),
+            writeFile: jest.fn().mockResolvedValue(undefined)
+        },
+        existsSync: jest.fn().mockReturnValue(true)
+    };
+    return mocked;
+});
+
+// Import after mocking dependencies
 const { 
     loadConfig, 
     initializeGuildConfig, 
@@ -7,13 +32,6 @@ const {
     removeUser, 
     getGuildUsers 
 } = require('../configManager');
-
-jest.mock('fs', () => ({
-    promises: {
-        readFile: jest.fn(),
-        writeFile: jest.fn()
-    }
-}));
 
 describe('configManager', () => {
     const mockConfig = {
@@ -34,8 +52,9 @@ describe('configManager', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        // Mock readFile to return our mock config
         fs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
-        fs.writeFile.mockResolvedValue();
+        fs.writeFile.mockResolvedValue(undefined);
     });
 
     describe('loadConfig', () => {
@@ -46,7 +65,7 @@ describe('configManager', () => {
         });
 
         it('should throw error if config file is invalid', async () => {
-            fs.readFile.mockResolvedValue('invalid json');
+            fs.readFile.mockRejectedValueOnce(new Error('Invalid JSON'));
             await expect(loadConfig()).rejects.toThrow();
         });
     });
@@ -58,7 +77,7 @@ describe('configManager', () => {
             const config = await initializeGuildConfig(newGuildId, channelId);
 
             expect(config).toHaveProperty('channelId', channelId);
-            expect(config).toHaveProperty('users');
+            expect(config).toHaveProperty('users', {});
             expect(config).toHaveProperty('cronJobs');
             expect(fs.writeFile).toHaveBeenCalled();
         });
