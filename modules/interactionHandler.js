@@ -106,9 +106,34 @@ async function handleSetChannel(interaction) {
         return;
     }
 
+    // Check if bot has permission to send messages in the channel
+    const botPermissions = channel.permissionsFor(interaction.client.user);
+    if (!botPermissions.has(['SendMessages', 'ViewChannel', 'EmbedLinks'])) {
+        await interaction.reply('I don\'t have permission to send messages or embeds in that channel. Please check my permissions and try again.');
+        return;
+    }
+
     await initializeGuildConfig(interaction.guildId, channel.id);
     await updateGuildChannel(interaction.guildId, channel.id);
-    await interaction.reply(`Announcement channel set to ${channel}.`);
+
+    // Send test embed to the channel
+    const testEmbed = {
+        color: 0x00ff00,
+        title: '📢 Channel Setup Successful!',
+        description: 'I will send LeetCode activity updates in this channel.',
+        footer: {
+            text: 'You can change this channel at any time using /setchannel'
+        },
+        timestamp: new Date()
+    };
+
+    try {
+        await channel.send({ embeds: [testEmbed] });
+        await interaction.reply(`Successfully set ${channel} as the announcement channel!`);
+    } catch (error) {
+        logger.error('Error sending test message:', error);
+        await interaction.reply('Channel was set but I encountered an error while sending a test message. Please check my permissions.');
+    }
 }
 
 async function handleManageCron(interaction) {
