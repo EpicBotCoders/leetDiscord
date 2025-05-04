@@ -4,6 +4,14 @@
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 [![Security Policy](https://img.shields.io/badge/Security-Policy-red.svg)](SECURITY.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D14-brightgreen)](https://nodejs.org)
+[![Discord.js](https://img.shields.io/badge/discord.js-v14.19.2-blue.svg)](https://discord.js.org)
+[![MongoDB](https://img.shields.io/badge/MongoDB-%234ea94b.svg?logo=mongodb&logoColor=white)](https://www.mongodb.com/)
+[![Jest](https://img.shields.io/badge/tested_with-jest-99424f.svg?logo=jest)](https://jestjs.io)
+[![ESLint](https://img.shields.io/badge/ESLint-4B3263?logo=eslint&logoColor=white)](https://eslint.org)
+[![Winston Logger](https://img.shields.io/badge/logger-winston-green.svg)](https://github.com/winstonjs/winston)
+[![GitHub last commit](https://img.shields.io/github/last-commit/mochiron-desu/leetDiscord)](https://github.com/mochiron-desu/leetDiscord)
+[![Test Coverage](https://img.shields.io/badge/coverage-jest-green.svg)](coverage/lcov-report/index.html)
 
 This Discord bot tracks LeetCode activity for specified users and posts updates to Discord channels. It supports multiple servers (guilds) with per-server configurations, storing data in MongoDB Atlas.
 
