@@ -22,10 +22,15 @@ async function main() {
             ]
         });
 
-        client.once('ready', () => {
-            logger.info('Bot is ready!');
-            registerCommands(client.application.id);
-            initializeScheduledTasks(client);
+        client.once('ready', async () => {
+            try {
+                logger.info('Bot is ready!');
+                await registerCommands(client.application.id);
+                await initializeScheduledTasks(client);
+                logger.info('Bot initialization complete');
+            } catch (error) {
+                logger.error('Error during bot initialization:', error);
+            }
         });
 
         client.on('interactionCreate', async interaction => {

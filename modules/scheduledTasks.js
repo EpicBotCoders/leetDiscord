@@ -1,11 +1,13 @@
 const cron = require('node-cron');
-const { fetchUserSubmissions } = require('./apiUtils');
+const { getUserSubmissions, getDailySlug } = require('./apiUtils');  // Add getDailySlug import
 const logger = require('./logger');
 const Guild = require('./models/Guild');
 
 const activeCronJobs = new Map();
+let discordClient = null;
 
 async function initializeScheduledTasks(client) {
+    discordClient = client;  // Store the client instance
     try {
         // Get all guilds from MongoDB
         const guilds = await Guild.find({});
@@ -52,18 +54,43 @@ function scheduleDailyCheck(client, guildId, channelId, schedule) {
                 return;
             }
 
+            // Get today's daily challenge slug
+            const dailySlug = await getDailySlug();
+            if (!dailySlug) {
+                logger.error('Failed to fetch daily challenge slug');
+                return;
+            }
+
+            const incompleteUsers = [];
+
             for (const [username, discordId] of Object.entries(users)) {
                 try {
-                    const submissions = await fetchUserSubmissions(username);
+                    const submissions = await getUserSubmissions(username);
                     if (submissions && submissions.length > 0) {
-                        const latestSubmission = submissions[0];
+                        // Check if user has completed today's challenge
+                        const todaysSubmission = submissions.find(sub => 
+                            sub.titleSlug === dailySlug && 
+                            sub.statusDisplay === 'Accepted'
+                        );
+
+                        if (!todaysSubmission) {
+                            const mention = discordId ? `<@${discordId}>` : username;
+                            incompleteUsers.push(mention);
+                        }
+                    } else {
+                        // If no submissions at all, add to incomplete users
                         const mention = discordId ? `<@${discordId}>` : username;
-                        const message = `${mention} submitted "${latestSubmission.title}" - ${latestSubmission.difficulty}`;
-                        await channel.send(message);
+                        incompleteUsers.push(mention);
                     }
                 } catch (error) {
                     logger.error(`Error fetching submissions for ${username}:`, error);
                 }
+            }
+
+            // Send a single message mentioning all users who haven't completed the challenge
+            if (incompleteUsers.length > 0) {
+                const message = `⚠️ ${incompleteUsers.join(', ')}\nDon't forget to complete today's LeetCode Daily Challenge!`;
+                await channel.send(message);
             }
         } catch (error) {
             logger.error('Error in scheduled task:', error);
@@ -93,7 +120,7 @@ async function updateGuildCronJobs(guildId) {
         // Set up new jobs based on current configuration
         guild.cronJobs.forEach(job => {
             if (job.task === 'runCheck') {
-                scheduleDailyCheck(global.client, guildId, guild.channelId, job.schedule);
+                scheduleDailyCheck(discordClient, guildId, guild.channelId, job.schedule);  // Use stored client instance
             }
         });
     } catch (error) {
