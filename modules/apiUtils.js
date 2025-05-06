@@ -2,24 +2,94 @@ const axios = require('axios');
 const logger = require('./logger');
 const DailySubmission = require('./models/DailySubmission');
 
-// Fetch today’s daily challenge slug
+// In-memory cache store
+const cache = {
+    dailySlug: { value: null, expiry: 0 },
+    problemDetails: new Map(),
+    userSubmissions: new Map()
+};
+
+const TTL = {
+    userSubmissions: 60 * 1000        // 1 minute
+};
+
+function getNextUtcMidnightTimestamp() {
+    const now = new Date();
+    const nextUtcMidnight = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() + 1, // next day
+        0, 0, 0, 0
+    ));
+    return nextUtcMidnight.getTime();
+}
+
+// Fetch today’s daily challenge slug with cache
 async function getDailySlug() {
+    const now = Date.now();
+
+    if (cache.dailySlug.value && cache.dailySlug.expiry > now) {
+        logger.info('Using cached daily slug');
+        return cache.dailySlug.value;
+    }
+
     try {
         logger.info('Fetching daily challenge slug.');
         const res = await axios.get('https://leetcode-api-pied.vercel.app/daily');
-        return res.data.question.titleSlug;
+        const slug = res.data.question.titleSlug;
+
+        // Set cache to expire at next UTC midnight
+        cache.dailySlug.value = slug;
+        cache.dailySlug.expiry = getNextUtcMidnightTimestamp();
+
+        return slug;
     } catch (error) {
         logger.error('Error fetching daily challenge slug:', error);
         throw error;
     }
 }
 
-// Fetch recent submissions for a user (limit 20)
+// Fetch problem details with cache
+async function getProblemDetails(slug) {
+    const now = Date.now();
+    const cached = cache.problemDetails.get(slug);
+
+    if (cached && cached.expiry > now) {
+        logger.info(`Returning cached problem details for slug: ${slug}`);
+        return cached.value;
+    }
+
+    try {
+        logger.info(`Fetching problem details for slug: ${slug}`);
+        const res = await axios.get(`https://leetcode-api-pied.vercel.app/problem/${slug}`);
+        
+        cache.problemDetails.set(slug, {
+            value: res.data,
+            expiry: getNextUtcMidnightTimestamp()
+        });
+
+        return res.data;
+    } catch (error) {
+        logger.error(`Error fetching problem details for slug: ${slug}`, error);
+        throw error;
+    }
+}
+
+// Fetch recent submissions for a user (limit 20) with cache
 async function getUserSubmissions(username) {
+    const now = Date.now();
+    const cached = cache.userSubmissions.get(username);
+
+    if (cached && now - cached.timestamp < TTL.userSubmissions) {
+        logger.info(`Returning cached submissions for ${username}`);
+        return cached.value;
+    }
+
     try {
         logger.info(`Fetching submissions for user: ${username}`);
         const res = await axios.get(`https://leetcode-api-pied.vercel.app/user/${username}/submissions?limit=20`);
-        return res.data; // array of { titleSlug, statusDisplay, ... }
+        cache.userSubmissions.set(username, { value: res.data, timestamp: now });
+        return res.data;
     } catch (error) {
         logger.error(`Error fetching submissions for user: ${username}`, error);
         throw error;
@@ -42,61 +112,54 @@ async function checkUser(username, slug) {
 function parseSubmissionTime(submission) {
     if (!submission.timestamp) {
         logger.warn('No timestamp in submission:', submission);
-        return new Date(); // Fallback to current time if no timestamp
+        return new Date();
     }
 
-    // Try parsing as unix timestamp (seconds or milliseconds)
     const timestamp = parseInt(submission.timestamp);
     if (!isNaN(timestamp)) {
-        // Check if it's in seconds (Unix timestamp) or milliseconds
         const date = timestamp > 9999999999 ? new Date(timestamp) : new Date(timestamp * 1000);
         if (date.toString() !== 'Invalid Date') {
             return date;
         }
     }
 
-    // Try parsing as ISO string
     const isoDate = new Date(submission.timestamp);
     if (isoDate.toString() !== 'Invalid Date') {
         return isoDate;
     }
 
     logger.warn(`Invalid timestamp format: ${submission.timestamp}, using current time`);
-    return new Date(); // Fallback to current time if parsing fails
+    return new Date();
 }
 
-// Enhanced check function with more problem details
+// Enhanced check function with caching and recording
 async function enhancedCheck(users, client, channelId) {
     logger.info('Starting enhanced check for users:', users);
+    logger.debug("Cache state:", cache);
     try {
-        const dailyData = await getDailySlug();
-        const problemDetails = await axios.get(`https://leetcode-api-pied.vercel.app/problem/${dailyData}`);
-        const problem = problemDetails.data;
+        const dailySlug = await getDailySlug();
+        const problem = await getProblemDetails(dailySlug);
 
         const topicTags = problem.topicTags ? problem.topicTags.map(tag => tag.name).join(', ') : 'N/A';
         const stats = problem.stats ? JSON.parse(problem.stats) : { acRate: 'N/A' };
 
-        // Create problem info field
         const problemField = {
             name: 'Problem Info',
             value: `**${problem.title || 'Unknown Problem'}** (${problem.difficulty || 'N/A'})\n` +
-                   `Topics: ${topicTags}\n` +
-                   `Acceptance Rate: ${stats.acRate}\n` +
-                   `[View Problem](${problem.url || 'N/A'})`
+                `Topics: ${topicTags}\n` +
+                `Acceptance Rate: ${stats.acRate}\n` +
+                `[View Problem](${problem.url || 'N/A'})`
         };
-        
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        // Create individual fields for each user status
         const userStatusFields = await Promise.all(users.map(async username => {
             const submissions = await getUserSubmissions(username);
-            const todaysSubmission = submissions.find(sub => 
-                sub.titleSlug === dailyData && 
-                sub.statusDisplay === 'Accepted'
+            const todaysSubmission = submissions.find(sub =>
+                sub.titleSlug === dailySlug && sub.statusDisplay === 'Accepted'
             );
 
-            // If submission is found, record it in DailySubmission
             if (todaysSubmission) {
                 try {
                     const channel = await client.channels.fetch(channelId);
@@ -104,19 +167,17 @@ async function enhancedCheck(users, client, channelId) {
                     const member = await guild.members.fetch({ user: username, force: true }).catch(() => null);
                     const userId = member ? member.id : username;
 
-                    // Check if we already have a submission record for today
                     const existingSubmission = await DailySubmission.findOne({
                         guildId: guild.id,
-                        userId: userId,
+                        userId,
                         leetcodeUsername: username,
-                        questionSlug: dailyData,
+                        questionSlug: dailySlug,
                         date: {
                             $gte: today,
                             $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
                         }
                     });
 
-                    // Only create new submission if one doesn't exist
                     if (!existingSubmission) {
                         const submissionTime = parseSubmissionTime(todaysSubmission);
                         await DailySubmission.create({
@@ -125,7 +186,7 @@ async function enhancedCheck(users, client, channelId) {
                             leetcodeUsername: username,
                             date: today,
                             questionTitle: problem.title,
-                            questionSlug: dailyData,
+                            questionSlug: dailySlug,
                             difficulty: problem.difficulty,
                             submissionTime
                         });
