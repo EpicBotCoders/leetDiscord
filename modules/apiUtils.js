@@ -155,6 +155,39 @@ async function enhancedCheck(users, client, channelId) {
         today.setHours(0, 0, 0, 0);
 
         const userStatusFields = await Promise.all(users.map(async username => {
+            // Step 1: Check if already submitted in DB
+            let userId = username;
+            let existingSubmission = null;
+
+            try {
+                const channel = await client.channels.fetch(channelId);
+                const guild = channel.guild;
+                const member = await guild.members.fetch({ user: username, force: true }).catch(() => null);
+                if (member) userId = member.id;
+
+                existingSubmission = await DailySubmission.findOne({
+                    guildId: guild.id,
+                    userId,
+                    leetcodeUsername: username,
+                    questionSlug: dailySlug,
+                    date: {
+                        $gte: today,
+                        $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+                    }
+                });
+            } catch (error) {
+                logger.warn(`Could not prefetch submission DB check for ${username}:`, error);
+            }
+
+            // If already submitted, skip further check
+            if (existingSubmission) {
+                return {
+                    name: username,
+                    value: '✅ Completed (cached)',
+                    inline: true
+                };
+            }
+
             const submissions = await getUserSubmissions(username);
             const todaysSubmission = submissions.find(sub =>
                 sub.titleSlug === dailySlug && sub.statusDisplay === 'Accepted'
@@ -162,35 +195,17 @@ async function enhancedCheck(users, client, channelId) {
 
             if (todaysSubmission) {
                 try {
-                    const channel = await client.channels.fetch(channelId);
-                    const guild = channel.guild;
-                    const member = await guild.members.fetch({ user: username, force: true }).catch(() => null);
-                    const userId = member ? member.id : username;
-
-                    const existingSubmission = await DailySubmission.findOne({
-                        guildId: guild.id,
+                    const submissionTime = parseSubmissionTime(todaysSubmission);
+                    await DailySubmission.create({
+                        guildId: client.guilds.cache.first().id, // fallback guild
                         userId,
                         leetcodeUsername: username,
+                        date: today,
+                        questionTitle: problem.title,
                         questionSlug: dailySlug,
-                        date: {
-                            $gte: today,
-                            $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
-                        }
+                        difficulty: problem.difficulty,
+                        submissionTime
                     });
-
-                    if (!existingSubmission) {
-                        const submissionTime = parseSubmissionTime(todaysSubmission);
-                        await DailySubmission.create({
-                            guildId: guild.id,
-                            userId,
-                            leetcodeUsername: username,
-                            date: today,
-                            questionTitle: problem.title,
-                            questionSlug: dailySlug,
-                            difficulty: problem.difficulty,
-                            submissionTime
-                        });
-                    }
                 } catch (error) {
                     logger.error(`Error recording submission for ${username}:`, error);
                 }
