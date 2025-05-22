@@ -59,7 +59,8 @@ async function handleCheck(interaction) {
         await interaction.editReply('No users are being tracked in this server.');
         return;
     }
-    const checkResult = await enhancedCheck(users, interaction.client, interaction.channelId);
+    // Pass interaction.guildId to enhancedCheck
+    const checkResult = await enhancedCheck(users, interaction.client, interaction.guildId, interaction.channelId);
     await interaction.editReply(checkResult);
 }
 

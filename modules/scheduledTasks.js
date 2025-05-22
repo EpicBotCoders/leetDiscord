@@ -1,37 +1,9 @@
 const cron = require('node-cron');
-const { getUserSubmissions, getDailySlug } = require('./apiUtils');
+const { getUserSubmissions, getDailySlug, getProblemDetails, parseSubmissionTime } = require('./apiUtils');
 const { PermissionsBitField } = require('discord.js');
-const axios = require('axios');
 const logger = require('./logger');
 const Guild = require('./models/Guild');
 const DailySubmission = require('./models/DailySubmission');
-
-// Helper function to safely parse submission timestamp
-function parseSubmissionTime(submission) {
-    if (!submission.timestamp) {
-        logger.warn('No timestamp in submission:', submission);
-        return new Date(); // Fallback to current time if no timestamp
-    }
-
-    // Try parsing as unix timestamp (seconds or milliseconds)
-    const timestamp = parseInt(submission.timestamp);
-    if (!isNaN(timestamp)) {
-        // Check if it's in seconds (Unix timestamp) or milliseconds
-        const date = timestamp > 9999999999 ? new Date(timestamp) : new Date(timestamp * 1000);
-        if (date.toString() !== 'Invalid Date') {
-            return date;
-        }
-    }
-
-    // Try parsing as ISO string
-    const isoDate = new Date(submission.timestamp);
-    if (isoDate.toString() !== 'Invalid Date') {
-        return isoDate;
-    }
-
-    logger.warn(`Invalid timestamp format: ${submission.timestamp}, using current time`);
-    return new Date(); // Fallback to current time if parsing fails
-}
 
 const activeCronJobs = new Map();
 let discordClient = null;
@@ -111,65 +83,74 @@ async function scheduleDailyCheck(client, guildId, channelId, schedule) {
             }
 
             // Fetch problem details to get difficulty
-            const problemDetails = await axios.get(`https://leetcode-api-pied.vercel.app/problem/${dailySlug}`);
-            const problem = problemDetails.data;
-            if (!problem || !problem.difficulty) {
-                logger.error('Failed to fetch problem details or missing difficulty');
+            const problem = await getProblemDetails(dailySlug);
+            if (!problem || !problem.title || !problem.difficulty) { // Ensure problem.title is also checked as it's used later
+                logger.error(`Failed to fetch problem details, or problem details are incomplete for slug: ${dailySlug}`);
                 return;
             }
 
             const incompleteUsers = [];
             const today = new Date();
-            today.setHours(0, 0, 0, 0);
+            today.setUTCHours(0, 0, 0, 0); // Use UTC for consistency
+            const tomorrow = new Date(today);
+            tomorrow.setUTCDate(today.getUTCDate() + 1);
+
+            // Batch fetch existing submissions
+            const leetcodeUsernames = Object.keys(users);
+            let submissionsMap = new Map();
+            if (leetcodeUsernames.length > 0) {
+                try {
+                    const existingSubmissions = await DailySubmission.find({
+                        guildId: guildId,
+                        leetcodeUsername: { $in: leetcodeUsernames },
+                        questionSlug: dailySlug,
+                        date: { $gte: today, $lt: tomorrow }
+                    });
+                    existingSubmissions.forEach(sub => submissionsMap.set(sub.leetcodeUsername, sub));
+                    logger.info(`Fetched ${submissionsMap.size} existing submissions for guild ${guildId} for slug ${dailySlug}.`);
+                } catch (dbError) {
+                    logger.error(`Error batch fetching submissions for guild ${guildId}:`, dbError);
+                    // Continue, but submissions might be re-recorded or checks might be less efficient
+                }
+            }
 
             for (const [username, discordId] of Object.entries(users)) {
                 try {
-                    const submissions = await getUserSubmissions(username);
-                    if (submissions && submissions.length > 0) {
-                        // Check if user has completed today's challenge
-                        const todaysSubmission = submissions.find(sub => 
-                            sub.titleSlug === dailySlug && 
-                            sub.statusDisplay === 'Accepted'
-                        );
+                    // Check if already recorded in DB from pre-fetched map
+                    const existingSubmission = submissionsMap.get(username);
+                    if (existingSubmission) {
+                        logger.info(`User ${username} (guild ${guildId}) already has a recorded submission for ${dailySlug}. Skipping.`);
+                        continue; // Already recorded, skip to next user
+                    }
 
-                        if (todaysSubmission) {
-                            // Check if we already have a submission record for today
-                            const existingSubmission = await DailySubmission.findOne({
-                                guildId,
-                                userId: discordId || username,
-                                leetcodeUsername: username,
-                                questionSlug: dailySlug,
-                                date: {
-                                    $gte: today,
-                                    $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
-                                }
-                            });
+                    // Fetch user's submissions from LeetCode API
+                    const userApiSubmissions = await getUserSubmissions(username);
+                    const todaysLeetCodeSubmission = userApiSubmissions.find(sub =>
+                        sub.titleSlug === dailySlug &&
+                        sub.statusDisplay === 'Accepted'
+                    );
 
-                            // Only create new submission if one doesn't exist
-                            if (!existingSubmission) {
-                                const submissionTime = parseSubmissionTime(todaysSubmission);
-                                await DailySubmission.create({
-                                    guildId,
-                                    userId: discordId || username,
-                                    leetcodeUsername: username,
-                                    date: today,
-                                    questionTitle: problem.title,
-                                    questionSlug: dailySlug,
-                                    difficulty: problem.difficulty,
-                                    submissionTime
-                                });
-                            }
-                        } else {
-                            const mention = discordId ? `<@${discordId}>` : username;
-                            incompleteUsers.push(mention);
-                        }
+                    if (todaysLeetCodeSubmission) {
+                        // If completed on LeetCode and not in our DB for today, record it
+                        const submissionTime = parseSubmissionTime(todaysLeetCodeSubmission); // Use imported function
+                        await DailySubmission.create({
+                            guildId,
+                            userId: discordId || username, // Use Discord ID if available
+                            leetcodeUsername: username,
+                            date: today, // Use UTC date
+                            questionTitle: problem.title,
+                            questionSlug: dailySlug,
+                            difficulty: problem.difficulty,
+                            submissionTime
+                        });
+                        logger.info(`Recorded new submission for ${username} (guild ${guildId}) for ${dailySlug}.`);
                     } else {
-                        // If no submissions at all, add to incomplete users
+                        // Not completed on LeetCode
                         const mention = discordId ? `<@${discordId}>` : username;
                         incompleteUsers.push(mention);
                     }
                 } catch (error) {
-                    logger.error(`Error fetching submissions for ${username}:`, error);
+                    logger.error(`Error processing user ${username} (guild ${guildId}) for slug ${dailySlug}:`, error);
                 }
             }
 

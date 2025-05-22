@@ -133,12 +133,18 @@ function parseSubmissionTime(submission) {
 }
 
 // Enhanced check function with caching and recording
-async function enhancedCheck(users, client, channelId) {
-    logger.info('Starting enhanced check for users:', users);
+async function enhancedCheck(users, client, guildId, channelId) {
+    logger.info(`Starting enhanced check for ${users.length} users in guild: ${guildId}`);
     logger.debug("Cache state:", cache);
     try {
         const dailySlug = await getDailySlug();
+        if (!dailySlug) {
+            return { content: 'Error fetching daily problem slug. Please try again later.' };
+        }
         const problem = await getProblemDetails(dailySlug);
+        if (!problem) {
+            return { content: 'Error fetching problem details. Please try again later.' };
+        }
 
         const topicTags = problem.topicTags ? problem.topicTags.map(tag => tag.name).join(', ') : 'N/A';
         const stats = problem.stats ? JSON.parse(problem.stats) : { acRate: 'N/A' };
@@ -152,43 +158,65 @@ async function enhancedCheck(users, client, channelId) {
         };
 
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        today.setUTCHours(0, 0, 0, 0); // Use UTC for consistency
+        const tomorrow = new Date(today);
+        tomorrow.setUTCDate(today.getUTCDate() + 1);
+
+        // Batch fetch existing submissions
+        let existingSubmissionsMap = new Map();
+        try {
+            const submissions = await DailySubmission.find({
+                guildId: guildId,
+                leetcodeUsername: { $in: users },
+                questionSlug: dailySlug,
+                date: { $gte: today, $lt: tomorrow }
+            });
+            submissions.forEach(sub => existingSubmissionsMap.set(sub.leetcodeUsername, sub));
+            logger.info(`Fetched ${existingSubmissionsMap.size} existing submissions for today.`);
+        } catch (error) {
+            logger.error('Error fetching existing submissions:', error);
+            // Continue without pre-fetched submissions if there's an error
+        }
 
         const userStatusFields = await Promise.all(users.map(async username => {
-            // Step 1: Check if already submitted in DB
-            let userId = username;
-            let existingSubmission = null;
+            // Step 1: Check if already submitted in DB (using pre-fetched map)
+            let userId = username; // Default to leetcode username if Discord ID not found
+            const existingSubmission = existingSubmissionsMap.get(username);
 
-            try {
-                const channel = await client.channels.fetch(channelId);
-                const guild = channel.guild;
-                const member = await guild.members.fetch({ user: username, force: true }).catch(() => null);
-                if (member) userId = member.id;
-
-                existingSubmission = await DailySubmission.findOne({
-                    guildId: guild.id,
-                    userId,
-                    leetcodeUsername: username,
-                    questionSlug: dailySlug,
-                    date: {
-                        $gte: today,
-                        $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
-                    }
-                });
-            } catch (error) {
-                logger.warn(`Could not prefetch submission DB check for ${username}:`, error);
-            }
-
-            // If already submitted, skip further check
             if (existingSubmission) {
                 return {
                     name: username,
-                    value: '✅ Completed (cached)',
+                    value: '✅ Completed (recorded)',
                     inline: true
                 };
             }
 
-            const submissions = await getUserSubmissions(username);
+            // Attempt to resolve Discord user ID
+            // This part remains tricky as we might not have the full guild object easily
+            // For now, let's prioritize leetcodeUsername and use guildId for DB operations.
+            // The original code fetched member by 'username' which is not a valid UserResolvable for fetch.
+            // It should be by ID if available, or rely on a mapping if one exists.
+            // We'll assume 'users' contains LeetCode usernames. If a Discord ID is needed,
+            // it should ideally be resolved before calling enhancedCheck or stored alongside the username.
+            // For now, we'll simplify and use leetcodeUsername as primary key for submissions,
+            // and store guildId correctly.
+            // If a Discord user ID is available (e.g., from a config map), it could be used for `userId`.
+            // The previous code was trying to get guild from channelId then member from guild.
+            // We now have guildId directly. If we need the member object:
+            let member = null;
+            if (client && guildId) {
+                try {
+                    const guild = await client.guilds.fetch(guildId);
+                    // Attempt to find user by username - this is unreliable.
+                    // A better approach would be to have a mapping of LeetCode username to Discord ID.
+                    // For now, we'll keep userId as leetcodeUsername unless a direct mapping is available.
+                } catch (fetchError) {
+                    logger.warn(`Could not fetch guild ${guildId} for member lookup: ${fetchError.message}`);
+                }
+            }
+            // If member object was found, userId = member.id; otherwise, userId remains username.
+
+            const submissions = await getUserSubmissions(username); // Fetches from LeetCode API
             const todaysSubmission = submissions.find(sub =>
                 sub.titleSlug === dailySlug && sub.statusDisplay === 'Accepted'
             );
@@ -196,40 +224,42 @@ async function enhancedCheck(users, client, channelId) {
             if (todaysSubmission) {
                 try {
                     const submissionTime = parseSubmissionTime(todaysSubmission);
+                    // Create new submission record
                     await DailySubmission.create({
-                        guildId: client.guilds.cache.first().id, // fallback guild
-                        userId,
+                        guildId: guildId, // Use the correct guildId
+                        userId: userId, // This might be LeetCode username or Discord ID
                         leetcodeUsername: username,
-                        date: today,
-                        questionTitle: problem.title,
+                        date: today, // Use UTC date
+                        questionTitle: problem.title || 'Unknown Title',
                         questionSlug: dailySlug,
-                        difficulty: problem.difficulty,
+                        difficulty: problem.difficulty || 'N/A',
                         submissionTime
                     });
+                    logger.info(`Recorded new submission for ${username} in guild ${guildId}`);
                 } catch (error) {
-                    logger.error(`Error recording submission for ${username}:`, error);
+                    logger.error(`Error recording submission for ${username} in guild ${guildId}:`, error);
                 }
             }
 
             return {
                 name: username,
-                value: todaysSubmission ? '✅ Completed' : '❌ Not completed',
+                value: todaysSubmission ? '✅ Completed (new)' : '❌ Not completed',
                 inline: true
             };
         }));
 
         const statusEmbed = {
             title: 'Daily LeetCode Challenge Status',
-            fields: [problemField, ...userStatusFields],
-            color: 0x00ff00,
+            fields: [problemField, ...userStatusFields.filter(Boolean)], // Filter out nulls if any errors occur
+            color: 0x00ff00, // Green
             timestamp: new Date()
         };
 
         return { embeds: [statusEmbed] };
     } catch (err) {
-        logger.error('Error during enhanced check:', err);
-        return { content: 'Error checking challenge status.' };
+        logger.error(`Error during enhanced check for guild ${guildId}:`, err);
+        return { content: 'An error occurred while checking challenge status. Please try again later.' };
     }
 }
 
-module.exports = { getDailySlug, getUserSubmissions, checkUser, enhancedCheck };
+module.exports = { getDailySlug, getProblemDetails, getUserSubmissions, checkUser, enhancedCheck, parseSubmissionTime };
