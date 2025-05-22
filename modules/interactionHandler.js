@@ -1,5 +1,7 @@
+const axios = require('axios'); // Import axios
 const { addUser, removeUser, getGuildUsers, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs } = require('./configManager');
 const { enhancedCheck } = require('./apiUtils');
+const { getLeaderboardData } = require('../modules/statsUtils'); // Import getLeaderboardData
 const { updateGuildCronJobs } = require('./scheduledTasks');
 const logger = require('./logger');
 
@@ -40,14 +42,19 @@ async function handleInteraction(interaction) {
             case 'botinfo':
                 await handleBotInfo(interaction);
                 break;
+            case 'leaderboard': // Add case for leaderboard
+                await handleLeaderboard(interaction);
+                break;
             default:
                 await interaction.reply('Unknown command.');
         }
     } catch (error) {
-        logger.error(`Error handling ${commandName}:`, error);
+        logger.error(`Error handling ${commandName} for guild ${guildId}:`, error);
         // Only reply if we haven't already
         if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply('An error occurred while processing your command.');
+            await interaction.reply({ content: 'An error occurred while processing your command.', ephemeral: true });
+        } else if (interaction.deferred) {
+            await interaction.editReply({ content: 'An error occurred while processing your command.', ephemeral: true });
         }
     }
 }
@@ -238,6 +245,103 @@ async function handleBotInfo(interaction) {
     };
 
     await interaction.reply({ embeds: [botInfoEmbed] });
+}
+
+async function handleLeaderboard(interaction) {
+    await interaction.deferReply();
+    const { guildId } = interaction;
+
+    try {
+        logger.info(`[handleLeaderboard] Fetching leaderboard data for guild: ${guildId}`);
+        const leaderboardData = await getLeaderboardData(guildId); // Using default limit
+
+        if (!leaderboardData || leaderboardData.length === 0) {
+            logger.info(`[handleLeaderboard] No leaderboard data found for guild: ${guildId}`);
+            await interaction.editReply('Could not retrieve leaderboard data, or no one has completed any challenges yet.');
+            return;
+        }
+
+        // Prepare chart configuration
+        const usernames = leaderboardData.map(entry => entry.leetcodeUsername).reverse(); // Reverse for better chart display (top user at top)
+        const completions = leaderboardData.map(entry => entry.uniqueCompletions).reverse(); // Reverse for better chart display
+
+        const chartConfig = {
+            type: 'bar',
+            data: {
+                labels: usernames,
+                datasets: [{
+                    label: 'Unique Completions',
+                    data: completions,
+                    backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y', // Horizontal bar chart
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    title: {
+                        display: true,
+                        text: 'All-Time LeetCode Daily Completions',
+                        font: {
+                            size: 18
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0 // Ensure whole numbers for completion counts
+                        }
+                    },
+                    y: {
+                        ticks: {
+                            font: {
+                                size: 10 // Adjust label font size if necessary
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        logger.info(`[handleLeaderboard] Generating chart for guild: ${guildId}`);
+        const chartResponse = await axios.post('https://quickchart.io/chart', 
+            { 
+                chart: chartConfig,
+                width: 600, // Optional: specify width
+                height: 400, // Optional: specify height
+                backgroundColor: 'white', // Optional: white background
+            }, 
+            { responseType: 'arraybuffer' }
+        );
+
+        const imageBuffer = chartResponse.data;
+        logger.info(`[handleLeaderboard] Successfully generated and fetched chart for guild: ${guildId}`);
+
+        await interaction.editReply({ 
+            content: "🏆 **LeetCode Daily Challenge Leaderboard** 🏆",
+            files: [{ attachment: imageBuffer, name: 'leaderboard.png' }] 
+        });
+
+    } catch (error) {
+        logger.error(`[handleLeaderboard] Error generating or fetching leaderboard chart for guild ${guildId}:`, error.response ? error.response.data : error.message);
+        // Check if it's an axios error and has response data
+        if (error.response && error.response.data) {
+            try {
+                const errorDataString = Buffer.from(error.response.data).toString('utf8');
+                logger.error(`[handleLeaderboard] QuickChart error details: ${errorDataString}`);
+            } catch (e) {
+                logger.error('[handleLeaderboard] Could not parse QuickChart error response.');
+            }
+        }
+        await interaction.editReply({ content: 'An error occurred while generating the leaderboard chart.', ephemeral: true });
+    }
 }
 
 module.exports = { handleInteraction };

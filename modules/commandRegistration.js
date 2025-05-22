@@ -82,6 +82,10 @@ const commands = [
     new SlashCommandBuilder()
         .setName('botinfo')
         .setDescription('Display information about the bot and its GitHub repository')
+        .toJSON(),
+    new SlashCommandBuilder()
+        .setName('leaderboard')
+        .setDescription('Displays the all-time daily challenge completion leaderboard.')
         .toJSON()
 ];
 

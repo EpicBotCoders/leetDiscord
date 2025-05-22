@@ -42,4 +42,7 @@ const dailySubmissionSchema = new mongoose.Schema({
 // Compound index for efficient querying of user submissions within a guild
 dailySubmissionSchema.index({ guildId: 1, userId: 1, date: -1 });
 
+// Compound index for leaderboard aggregation
+dailySubmissionSchema.index({ guildId: 1, leetcodeUsername: 1, questionSlug: 1 });
+
 module.exports = mongoose.model('DailySubmission', dailySubmissionSchema);
