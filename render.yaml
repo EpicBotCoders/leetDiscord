@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: leetDiscord
+    env: node
+    plan: free
+    buildCommand: 'npm install'
+    startCommand: 'node index.js'
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DISCORD_TOKEN
+        sync: false  # Set this in the Render dashboard for security
+      - key: MONGODB_URI
+        sync: false  # Set this in the Render dashboard for security
