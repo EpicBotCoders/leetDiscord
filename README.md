@@ -19,9 +19,15 @@ This Discord bot tracks LeetCode activity for specified users and posts updates 
 - [LeetDiscord Bot](#leetdiscord-bot)
   - [Table of Contents](#table-of-contents)
   - [Prerequisites](#prerequisites)
-  - [Setup Instructions](#setup-instructions)
+  - [Quick Start](#quick-start)
   - [Server Setup](#server-setup)
   - [Available Commands](#available-commands)
+    - [Setup Commands](#setup-commands)
+    - [User Management Commands](#user-management-commands)
+    - [Scheduling Commands](#scheduling-commands)
+    - [Monitoring Commands](#monitoring-commands)
+    - [Information Commands](#information-commands)
+  - [Command Workflow](#command-workflow)
   - [Features](#features)
   - [Environment Variables](#environment-variables)
   - [Security](#security)
@@ -45,49 +51,311 @@ This Discord bot tracks LeetCode activity for specified users and posts updates 
 - A Discord bot token (from [Discord Developer Portal](https://discord.com/developers/applications))
 - MongoDB Atlas account (free tier works fine)
 
-## Setup Instructions
+## Quick Start
 
-1. Clone this repository to your local machine
+Follow these steps to get your bot up and running:
 
-2. Install dependencies:
+### 1. Clone and Install
+
 ```bash
+git clone https://github.com/mochiron-desu/leetDiscord.git
+cd leetDiscord
 npm install
 ```
 
-3. Create a `.env` file in the root directory with:
+### 2. Create Discord Bot
+
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click "New Application" and give it a name
+3. Navigate to the "Bot" section
+4. Click "Add Bot"
+5. Under "Token", click "Copy" to get your bot token
+6. **Important**: Enable the following Privileged Gateway Intents:
+   - Server Members Intent
+   - Message Content Intent
+
+### 3. Set Up MongoDB Atlas
+
+1. Create a free account at [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
+2. Create a new cluster (free M0 tier is sufficient)
+3. Set up database access:
+   - Create a database user with read/write permissions
+   - Note down the username and password
+4. Set up network access:
+   - Add your IP address (or use `0.0.0.0/0` for testing)
+5. Click "Connect" → "Connect your application"
+6. Copy the connection string
+
+### 4. Configure Environment Variables
+
+Create a `.env` file in the root directory:
+
 ```env
 DISCORD_TOKEN=your_discord_bot_token
-MONGODB_URI=your_mongodb_connection_string
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/leetdiscord?retryWrites=true&w=majority
+NODE_ENV=production
 ```
 
 Replace:
-- `your_discord_bot_token` with your Discord bot token
-- `your_mongodb_connection_string` with your MongoDB Atlas connection string
+- `your_discord_bot_token` with the token from Discord Developer Portal
+- `username:password` with your MongoDB credentials
+- `cluster.mongodb.net` with your cluster URL
 
-4. Start the bot:
+### 5. Invite Bot to Your Server
+
+1. In Discord Developer Portal, go to "OAuth2" → "URL Generator"
+2. Select scopes: `bot` and `applications.commands`
+3. Select bot permissions:
+   - View Channels
+   - Send Messages
+   - Embed Links
+   - Manage Channels (for admins setting up the bot)
+4. Copy the generated URL and open it in your browser
+5. Select your server and authorize
+
+### 6. Start the Bot
+
 ```bash
 node index.js
 ```
+
+You should see:
+```
+Bot is ready!
+Started refreshing application (/) commands.
+Successfully reloaded application (/) commands.
+Bot initialization complete
+```
+
+### 7. Initial Server Configuration
+
+In your Discord server, run these commands to get started:
+
+1. **Set announcement channel**: `/setchannel #your-channel`
+2. **Add users to track**: `/adduser username @DiscordUser`
+3. **Set up automatic checks** (optional): `/managecron add hours:10 minutes:0`
+4. **Test it out**: `/check`
+
+**Need help?** Use `/help` in Discord to see all available commands!
 
 ## Server Setup
 
 When the bot joins a new server:
 1. It will automatically create initial configuration in MongoDB
-2. Use the `/setchannel` command to set the announcement channel
-3. Use `/adduser` to start tracking LeetCode users
+2. The bot will send a welcome message explaining how to get started
+3. Use the `/setchannel` command to set the announcement channel
+4. Use `/adduser` to start tracking LeetCode users
 
 ## Available Commands
 
-- `/setchannel` - Set the channel for LeetCode activity announcements (requires Manage Channels permission)
-- `/adduser` - Add a LeetCode username to track (optionally link to a Discord user)
-- `/removeuser` - Remove a LeetCode username from tracking
-- `/listusers` - List all tracked users in the server
-- `/check` - Manually trigger a check of today's LeetCode challenge status
-- `/botinfo` - Display information about the bot and its GitHub repository
-- `/managecron` - Manage scheduled check times (requires Manage Channels permission)
-  - `/managecron add` - Add a new check time (24h format)
-  - `/managecron remove` - Remove an existing check time
-  - `/managecron list` - List all scheduled check times
+All commands are available as Discord slash commands. Type `/` in Discord to see the autocomplete list. Use `/help` to see detailed information about all commands.
+
+### Setup Commands
+
+#### `/setchannel #channel`
+
+**Permission Required**: Manage Channels 🔒
+
+Set the channel where LeetCode activity announcements will be posted.
+
+**Usage Examples**:
+```
+/setchannel #leetcode-updates
+/setchannel #daily-coding
+```
+
+**What it does**:
+- Initializes the server configuration in the database
+- Sets the specified channel as the announcement channel
+- Sends a test message to verify bot permissions
+- Required before other commands will work properly
+
+---
+
+### User Management Commands
+
+#### `/adduser username [discord_user]`
+
+Add a LeetCode username to the tracking list. Optionally link to a Discord user for mentions.
+
+**Permission Requirements**:
+- Users can add themselves without special permissions
+- Manage Roles permission required to add other users
+
+**Usage Examples**:
+```
+/adduser john_doe
+/adduser alice123 @Alice
+/adduser bob_coder discord_user:@BobTheCoder
+```
+
+**Parameters**:
+- `username` (required): The LeetCode username to track
+- `discord_user` (optional): Discord user to mention in updates
+
+#### `/removeuser username`
+
+Remove a LeetCode username from tracking.
+
+**Permission Requirements**:
+- Users can remove themselves without special permissions
+- Manage Roles permission required to remove other users
+
+**Usage Examples**:
+```
+/removeuser john_doe
+/removeuser alice123
+```
+
+#### `/listusers`
+
+Display all LeetCode users currently being tracked in this server.
+
+**Usage Example**:
+```
+/listusers
+```
+
+**Output shows**:
+- LeetCode username
+- Linked Discord user (if any)
+
+---
+
+### Scheduling Commands
+
+All scheduling commands require **Manage Channels** permission 🔒
+
+#### `/managecron add hours minutes`
+
+Add a new automatic check time (24-hour format).
+
+**Usage Examples**:
+```
+/managecron add hours:10 minutes:0    # Daily check at 10:00 AM
+/managecron add hours:18 minutes:30   # Daily check at 6:30 PM
+/managecron add hours:23 minutes:59   # Daily check at 11:59 PM
+```
+
+**Parameters**:
+- `hours`: 0-23 (24-hour format)
+- `minutes`: 0-59
+
+**Default Schedule**: New servers start with checks at 10:00 and 18:00 UTC
+
+#### `/managecron remove hours minutes`
+
+Remove an existing automatic check time.
+
+**Usage Example**:
+```
+/managecron remove hours:18 minutes:30
+```
+
+#### `/managecron list`
+
+List all scheduled check times for this server.
+
+**Usage Example**:
+```
+/managecron list
+```
+
+---
+
+### Monitoring Commands
+
+#### `/check`
+
+Manually trigger a check of today's LeetCode daily challenge for all tracked users.
+
+**Usage Example**:
+```
+/check
+```
+
+**What it does**:
+- Fetches today's LeetCode daily challenge
+- Checks each tracked user's submission history
+- Posts results to the configured announcement channel
+- Shows who completed the challenge and who hasn't
+- Includes problem details (difficulty, tags, acceptance rate)
+
+---
+
+### Information Commands
+
+#### `/botinfo`
+
+Display information about the bot and link to the GitHub repository.
+
+**Usage Example**:
+```
+/botinfo
+```
+
+#### `/help`
+
+Display a comprehensive help message with all commands, usage examples, and a quick start guide.
+
+**Usage Example**:
+```
+/help
+```
+
+## Command Workflow
+
+Understanding how commands interact with each other:
+
+```mermaid
+graph TD
+    A[Bot Joins Server] --> B[/setchannel]
+    B --> C{Guild Configured}
+    C -->|Yes| D[/adduser]
+    C -->|Yes| E[/managecron]
+    D --> F[Users Tracked]
+    E --> G[Schedule Set]
+    F --> H[/check]
+    G --> H
+    H --> I[Results Posted]
+    I --> J[MongoDB Update]
+    
+    style B fill:#ffd700
+    style D fill:#90EE90
+    style E fill:#87CEEB
+    style H fill:#FFB6C1
+```
+
+**Flow Explanation**:
+
+1. **Initial Setup** (`/setchannel`)
+   - Creates guild configuration in MongoDB
+   - Sets announcement channel
+   - Enables all other commands
+
+2. **User Management** (`/adduser`, `/removeuser`)
+   - Requires configured guild
+   - Stores user mappings in database
+   - Links LeetCode accounts to Discord users
+
+3. **Scheduling** (`/managecron`)
+   - Sets up automated checks using cron jobs
+   - Multiple check times can be configured
+   - Automatically triggers `/check` functionality
+
+4. **Monitoring** (`/check`)
+   - Can be triggered manually or automatically
+   - Queries LeetCode GraphQL API for:
+     - Today's daily challenge
+     - User submission history
+   - Checks against MongoDB for duplicate tracking
+   - Posts formatted embed to announcement channel
+   - Records submissions in database
+
+**Data Flow**:
+- **LeetCode API** → Bot → **MongoDB** → Discord Channel
+- Cached API responses for performance
+- Submission tracking prevents duplicates
 
 ## Features
 

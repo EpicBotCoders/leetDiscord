@@ -40,11 +40,26 @@ async function handleInteraction(interaction) {
             case 'botinfo':
                 await handleBotInfo(interaction);
                 break;
+            case 'help':
+                await handleHelp(interaction);
+                break;
             default:
                 await interaction.reply('Unknown command.');
         }
     } catch (error) {
         logger.error(`Error handling ${commandName}:`, error);
+
+        // Handle specific error: Guild not configured
+        if (error.message === 'Guild not configured') {
+            const replyMessage = 'This server is not configured yet. Please run `/setchannel` to set an announcement channel and initialize the bot.';
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply(replyMessage);
+            } else {
+                await interaction.reply(replyMessage);
+            }
+            return;
+        }
+
         // Only reply if we haven't already
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply('An error occurred while processing your command.');
@@ -67,10 +82,10 @@ async function handleAddUser(interaction) {
     const username = interaction.options.getString('username');
     const targetUser = interaction.options.getUser('discord_user');
     const discordId = targetUser ? targetUser.id : null;
-    
+
     // Check permissions - using correct permission flag 'ManageRoles'
     const hasPermission = interaction.member.permissions.has('ManageRoles') || interaction.member.permissions.has('Administrator');
-    
+
     // If no permission, only allow adding self
     if (!hasPermission) {
         // If trying to add someone else's Discord account
@@ -84,7 +99,7 @@ async function handleAddUser(interaction) {
             return;
         }
     }
-    
+
     logger.info(`Adding user: ${username} with Discord ID: ${discordId}`);
     const addResult = await addUser(interaction.guildId, username, discordId);
     await interaction.reply(addResult);
@@ -92,21 +107,21 @@ async function handleAddUser(interaction) {
 
 async function handleRemoveUser(interaction) {
     const username = interaction.options.getString('username');
-    
+
     // Check permissions - using correct permission flag 'ManageRoles'
     const hasPermission = interaction.member.permissions.has('ManageRoles') || interaction.member.permissions.has('Administrator');
-    
+
     // If no permission, verify they're removing themselves
     if (!hasPermission) {
         const guildUsers = await getGuildUsers(interaction.guildId);
         const userEntry = Object.entries(guildUsers).find(([leetcode]) => leetcode === username);
-        
+
         if (!userEntry || userEntry[1] !== interaction.user.id) {
             await interaction.reply('You can only remove yourself from the tracking list. You need Manage Roles permission to remove other users.');
             return;
         }
     }
-    
+
     logger.info(`Removing user: ${username}`);
     const removeResult = await removeUser(interaction.guildId, username);
     await interaction.reply(removeResult);
@@ -115,17 +130,17 @@ async function handleRemoveUser(interaction) {
 async function handleListUsers(interaction) {
     const users = await getGuildUsers(interaction.guildId);
     const userList = Object.entries(users)
-        .map(([leetcode, discordId]) => 
-            discordId ? 
-            `• ${leetcode} (<@${discordId}>)` : 
-            `• ${leetcode}`
+        .map(([leetcode, discordId]) =>
+            discordId ?
+                `• ${leetcode} (<@${discordId}>)` :
+                `• ${leetcode}`
         )
         .join('\n');
-    
+
     await interaction.reply(
-        userList ? 
-        `Currently tracking these users:\n${userList}` : 
-        'No users are being tracked in this server.'
+        userList ?
+            `Currently tracking these users:\n${userList}` :
+            'No users are being tracked in this server.'
     );
 }
 
@@ -231,12 +246,58 @@ async function handleBotInfo(interaction) {
             }
         ],
         footer: {
-            text: 'Type / to see all available commands!'
+            text: 'Type /help to see all available commands!'
         },
         timestamp: new Date()
     };
 
     await interaction.reply({ embeds: [botInfoEmbed] });
+}
+
+async function handleHelp(interaction) {
+    const helpEmbed = {
+        color: 0x5865F2,
+        title: '📖 LeetCode Discord Bot - Command Help',
+        description: 'Here are all available commands organized by category. Commands marked with 🔒 require special permissions.',
+        fields: [
+            {
+                name: '⚙️ Setup Commands',
+                value: '**`/setchannel #channel`** 🔒\n└ Set the announcement channel for LeetCode updates\n└ *Requires: Manage Channels permission*\n└ Example: `/setchannel #leetcode-updates`',
+                inline: false
+            },
+            {
+                name: '👥 User Management',
+                value: '**`/adduser username [discord_user]`**\n└ Add a LeetCode user to track (optionally link to Discord user)\n└ *Users can add themselves; admins can add anyone*\n└ Example: `/adduser john_doe @JohnDoe`\n\n**`/removeuser username`**\n└ Remove a LeetCode user from tracking\n└ *Users can remove themselves; admins can remove anyone*\n└ Example: `/removeuser john_doe`\n\n**`/listusers`**\n└ Display all tracked LeetCode users in this server\n└ Shows Discord mentions if linked',
+                inline: false
+            },
+            {
+                name: '⏰ Scheduling Commands',
+                value: '**`/managecron add hours minutes`** 🔒\n└ Add a scheduled check time (24-hour format)\n└ *Requires: Manage Channels permission*\n└ Example: `/managecron add hours:14 minutes:30`\n\n**`/managecron remove hours minutes`** 🔒\n└ Remove a scheduled check time\n└ Example: `/managecron remove hours:14 minutes:30`\n\n**`/managecron list`** 🔒\n└ List all scheduled check times for this server',
+                inline: false
+            },
+            {
+                name: '🔍 Monitoring Commands',
+                value: '**`/check`**\n└ Manually trigger a check of today\'s LeetCode challenge\n└ Checks all tracked users and posts results to the announcement channel',
+                inline: false
+            },
+            {
+                name: 'ℹ️ Information Commands',
+                value: '**`/botinfo`**\n└ Display bot information and GitHub repository link\n\n**`/help`**\n└ Display this help message',
+                inline: false
+            },
+            {
+                name: '🚀 Quick Start Guide',
+                value: '1️⃣ Run `/setchannel` to set where updates are posted\n2️⃣ Use `/adduser` to add LeetCode users to track\n3️⃣ Set up automatic checks with `/managecron add`\n4️⃣ Use `/check` to manually trigger a status check',
+                inline: false
+            }
+        ],
+        footer: {
+            text: 'LeetCode Discord Bot • GitHub: mochiron-desu/leetDiscord'
+        },
+        timestamp: new Date()
+    };
+
+    await interaction.reply({ embeds: [helpEmbed] });
 }
 
 module.exports = { handleInteraction };

@@ -82,6 +82,10 @@ const commands = [
     new SlashCommandBuilder()
         .setName('botinfo')
         .setDescription('Display information about the bot and its GitHub repository')
+        .toJSON(),
+    new SlashCommandBuilder()
+        .setName('help')
+        .setDescription('Display all available commands and their usage')
         .toJSON()
 ];
 
@@ -90,10 +94,10 @@ async function registerCommands(clientId) {
         logger.error('Failed to register commands: No client ID provided');
         return;
     }
-    
+
     logger.info(`Initializing command registration for clientId: ${clientId}`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-    
+
     try {
         logger.info('Started refreshing application (/) commands.');
 
