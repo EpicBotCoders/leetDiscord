@@ -9,6 +9,7 @@ const { connectDB } = require('./modules/models/db');
 const logger = require('./modules/logger');
 const { initializeScheduledTasks, stopAllCronJobs } = require('./modules/scheduledTasks');
 const { startTelegramBot } = require('./modules/telegramBot');
+const http = require('http');
 
 async function sendWelcomeMessage(guild) {
     try {
@@ -91,15 +92,32 @@ async function main() {
         // Start Telegram Bot
         await startTelegramBot();
 
+
+        // Start a simple HTTP server to satisfy Render's port binding requirement
+        const port = process.env.PORT || 3000;
+        const server = http.createServer((req, res) => {
+            res.writeHead(200);
+            res.end('Alive');
+        });
+
+        server.listen(port, () => {
+            logger.info(`HTTP server listening on port ${port}`);
+        });
+
+        // Self-ping to prevent sleeping
+        setInterval(() => {
+            http.get(`http://localhost:${port}`);
+        }, 60000); // Ping every 1 minute
+
         // Setup graceful shutdown handlers
-        setupGracefulShutdown(client);
+        setupGracefulShutdown(client, server);
     } catch (error) {
         logger.error('Failed to start the bot:', error);
         process.exit(1);
     }
 }
 
-function setupGracefulShutdown(client) {
+function setupGracefulShutdown(client, server) {
     let isShuttingDown = false;
 
     const shutdown = async (signal) => {
@@ -128,11 +146,20 @@ function setupGracefulShutdown(client) {
             }
 
             // Close MongoDB connection
+            // Close MongoDB connection
             const mongoose = require('mongoose');
             if (mongoose.connection.readyState !== 0) {
                 logger.info('Closing MongoDB connection...');
                 await mongoose.connection.close();
                 logger.info('MongoDB connection closed');
+            }
+
+            // Close HTTP server
+            if (server) {
+                logger.info('Closing HTTP server...');
+                server.close(() => {
+                    logger.info('HTTP server closed');
+                });
             }
 
             logger.info('Graceful shutdown complete');
