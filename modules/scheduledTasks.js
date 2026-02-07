@@ -53,6 +53,9 @@ async function initializeScheduledTasks(client) {
             });
         }
         logger.info('Scheduled tasks initialized successfully');
+
+        // Initialize silent daily check
+        await scheduleSilentDailyCheck(client);
     } catch (error) {
         logger.error('Error initializing scheduled tasks:', error);
     }
@@ -295,10 +298,122 @@ function stopAllCronJobs() {
     logger.info(`Stopped ${stoppedCount} cron job(s)`);
 }
 
+
+async function scheduleSilentDailyCheck(client) {
+    const schedule = process.env.SILENT_CHECK_SCHEDULE || '55 23 * * *';
+    const jobKey = 'silent-daily-check';
+
+    // Clear existing job if it exists
+    if (activeCronJobs.has(jobKey)) {
+        activeCronJobs.get(jobKey).stop();
+        activeCronJobs.delete(jobKey);
+    }
+
+    logger.info(`Scheduling silent daily check with schedule: ${schedule} (UTC)`);
+
+    const job = cron.schedule(schedule, async () => {
+        logger.info('Starting silent daily check...');
+        await performSilentCheck(client);
+        logger.info('Silent daily check completed.');
+    }, {
+        timezone: "UTC"
+    });
+
+    activeCronJobs.set(jobKey, job);
+}
+
+async function performSilentCheck(client) {
+    try {
+        // Get today's daily challenge slug
+        const dailySlug = await getDailySlug();
+        if (!dailySlug) {
+            logger.error('Failed to fetch daily challenge slug for silent check');
+            return;
+        }
+
+        // Fetch problem details to get difficulty
+        const problemDetails = await axios.get(`https://leetcode-api-pied.vercel.app/problem/${dailySlug}`);
+        const problem = problemDetails.data;
+        if (!problem || !problem.difficulty) {
+            logger.error('Failed to fetch problem details or missing difficulty for silent check');
+            return;
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Get all guilds from MongoDB
+        const guilds = await Guild.find({});
+
+        for (const guild of guilds) {
+            const users = Object.fromEntries(guild.users);
+            if (Object.keys(users).length === 0) continue;
+
+            for (const [username, discordId] of Object.entries(users)) {
+                try {
+                    // Update calendar stats for this user
+                    try {
+                        await updateUserStats(guild.guildId, username);
+                        logger.debug(`Silent check: Updated calendar stats for ${username} in guild ${guild.guildId}`);
+                    } catch (statsError) {
+                        logger.warn(`Could not update calendar stats for ${username} during silent check:`, statsError.message);
+                    }
+
+                    const submissions = await getUserSubmissions(username);
+
+                    if (submissions && submissions.length > 0) {
+                        // Check if user has completed today's challenge
+                        const todaysSubmission = submissions.find(sub =>
+                            sub.titleSlug === dailySlug &&
+                            sub.statusDisplay === 'Accepted'
+                        );
+
+                        if (todaysSubmission) {
+                            // Check if we already have a submission record for today
+                            const existingSubmission = await DailySubmission.findOne({
+                                guildId: guild.guildId,
+                                userId: discordId || username,
+                                leetcodeUsername: username,
+                                questionSlug: dailySlug,
+                                date: {
+                                    $gte: today,
+                                    $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+                                }
+                            });
+
+                            // Only create new submission if one doesn't exist
+                            if (!existingSubmission) {
+                                const submissionTime = parseSubmissionTime(todaysSubmission);
+                                await DailySubmission.create({
+                                    guildId: guild.guildId,
+                                    userId: discordId || username,
+                                    leetcodeUsername: username,
+                                    date: today,
+                                    questionTitle: problem.title,
+                                    questionSlug: dailySlug,
+                                    difficulty: problem.difficulty,
+                                    submissionTime
+                                });
+                                logger.info(`Silent check: Recorded submission for ${username} in guild ${guild.guildId}`);
+                            }
+                        }
+                    }
+                } catch (userError) {
+                    logger.error(`Error processing user ${username} during silent check:`, userError);
+                }
+            }
+        }
+    } catch (error) {
+        logger.error('Error in silent daily check:', error);
+    }
+}
+
 module.exports = {
     initializeScheduledTasks,
     scheduleDailyCheck,
     updateGuildCronJobs,
     stopAllCronJobs,
-    performDailyCheck
+    performDailyCheck,
+    scheduleSilentDailyCheck,
+    performSilentCheck
 };
