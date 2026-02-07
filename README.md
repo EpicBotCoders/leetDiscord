@@ -27,6 +27,7 @@ This Discord bot tracks LeetCode activity for specified users and posts updates 
     - [Scheduling Commands](#scheduling-commands)
     - [Monitoring Commands](#monitoring-commands)
     - [Information Commands](#information-commands)
+    - [Notification Commands](#notification-commands)
   - [Command Workflow](#command-workflow)
   - [Features](#features)
   - [Environment Variables](#environment-variables)
@@ -41,6 +42,7 @@ This Discord bot tracks LeetCode activity for specified users and posts updates 
     - [Running Specific Tests](#running-specific-tests)
   - [License](#license)
   - [Changelog](#changelog)
+    - [v2.2.0 (2026-02-07)](#v220-2026-02-07)
     - [v2.1.0 (2025-05-04)](#v210-2025-05-04)
     - [v2.0.0 (2025-05-02)](#v200-2025-05-02)
     - [v1.0.0](#v100)
@@ -303,6 +305,40 @@ Display a comprehensive help message with all commands, usage examples, and a qu
 /help
 ```
 
+### Notification Commands
+
+#### `/telegram connect`
+
+Link your Telegram account to receive notifications about incomplete daily challenges.
+
+**Usage Example**:
+```
+/telegram connect
+```
+
+**What it does**:
+- Generates a unique link to the Telegram bot
+- Links your Discord user to your Telegram account
+- Enables notifications for daily challenge reminders
+
+#### `/telegram status`
+
+Check your Telegram connection status.
+
+**Usage Example**:
+```
+/telegram status
+```
+
+#### `/telegram toggle`
+
+Enable or disable Telegram notifications.
+
+**Usage Example**:
+```
+/telegram toggle
+```
+
 ## Command Workflow
 
 Understanding how commands interact with each other:
@@ -490,6 +526,22 @@ npm run test:coverage
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Changelog
+
+### v2.2.0 (2026-02-07)
+- 🔔 **Telegram Integration**:
+  - Connect Telegram account for personal notifications
+  - Receive reminders for incomplete daily challenges
+  - Manage notification preferences
+- 📊 **Enhanced Statistics**:
+  - Added `/leetstats` command for detailed user logic
+  - Support for server-wide statistics view
+  - Track streaks, active days, and more
+- ℹ️ **Dynamic Help Command**:
+  - Help strings are now dynamically generated from command definitions
+  - Always up-to-date with available commands
+- 🐛 **Bug Fixes**:
+  - Improved error handling for unconfigured guilds
+  - Fixed issues with Telegram linking
 
 ### v2.1.0 (2025-05-04)
 - ✨ Added submission tracking with MongoDB

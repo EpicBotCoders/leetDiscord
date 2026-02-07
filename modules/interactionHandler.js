@@ -1,4 +1,5 @@
 const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs, setTelegramToken, toggleTelegramUpdates, getTelegramUser } = require('./configManager');
+const { commandDefinitions } = require('./commandRegistration');
 const { enhancedCheck, getUserCalendar } = require('./apiUtils');
 const { updateGuildCronJobs } = require('./scheduledTasks');
 const logger = require('./logger');
@@ -569,42 +570,43 @@ async function handleBotInfo(interaction) {
 }
 
 async function handleHelp(interaction) {
+    const categories = {};
+
+    // Group commands by category based on definitions
+    commandDefinitions.forEach(cmd => {
+        if (!categories[cmd.category]) {
+            categories[cmd.category] = [];
+        }
+        categories[cmd.category].push(cmd.data);
+    });
+
+    const fields = Object.entries(categories).map(([category, commands]) => {
+        const commandList = commands.map(cmd => {
+            let desc = `**\`/${cmd.name}\`**\n└ ${cmd.description}`;
+
+            // Add subcommand info if available (basic listing)
+            if (cmd.options && cmd.options.length > 0) {
+                const subcommands = cmd.options.filter(opt => opt.constructor.name === 'SlashCommandSubcommandBuilder');
+                if (subcommands.length > 0) {
+                    const subNames = subcommands.map(s => s.name).join(', ');
+                    desc += `\n└ Subcommands: ${subNames}`;
+                }
+            }
+            return desc;
+        }).join('\n\n');
+
+        return {
+            name: `${getCategoryEmoji(category)} ${category}`,
+            value: commandList,
+            inline: false
+        };
+    });
+
     const helpEmbed = {
         color: 0x5865F2,
         title: '📖 LeetCode Discord Bot - Command Help',
-        description: 'Here are all available commands organized by category. Commands marked with 🔒 require special permissions.',
-        fields: [
-            {
-                name: '⚙️ Setup Commands',
-                value: '**`/setchannel #channel`** 🔒\n└ Set the announcement channel for LeetCode updates\n└ *Requires: Manage Channels permission*\n└ Example: `/setchannel #leetcode-updates`',
-                inline: false
-            },
-            {
-                name: '👥 User Management',
-                value: '**`/adduser username [discord_user]`**\n└ Add a LeetCode user to track (optionally link to Discord user)\n└ *Users can add themselves; admins can add anyone*\n└ Example: `/adduser john_doe @JohnDoe`\n\n**`/removeuser username`**\n└ Remove a LeetCode user from tracking\n└ *Users can remove themselves; admins can remove anyone*\n└ Example: `/removeuser john_doe`\n\n**`/listusers`**\n└ Display all tracked LeetCode users in this server\n└ Shows Discord mentions if linked',
-                inline: false
-            },
-            {
-                name: '⏰ Scheduling Commands',
-                value: '**`/managecron add hours minutes`** 🔒\n└ Add a scheduled check time (24-hour format)\n└ *Requires: Manage Channels permission*\n└ Example: `/managecron add hours:14 minutes:30`\n\n**`/managecron remove hours minutes`** 🔒\n└ Remove a scheduled check time\n└ Example: `/managecron remove hours:14 minutes:30`\n\n**`/managecron list`** 🔒\n└ List all scheduled check times for this server',
-                inline: false
-            },
-            {
-                name: '🔍 Monitoring Commands',
-                value: '**`/check`**\n└ Manually trigger a check of today\'s LeetCode challenge\n└ Checks all tracked users and posts results to the announcement channel\n\n**`/leetstats [show_all]`**\n└ View LeetCode statistics (streak, active days, etc.)\n└ Default: Shows your personal stats if registered\n└ `show_all:true` - Shows stats for all tracked members\n└ Example: `/leetstats` or `/leetstats show_all:true`',
-                inline: false
-            },
-            {
-                name: 'ℹ️ Information Commands',
-                value: '**`/botinfo`**\n└ Display bot information and GitHub repository link\n\n**`/help`**\n└ Display this help message',
-                inline: false
-            },
-            {
-                name: '🚀 Quick Start Guide',
-                value: '1️⃣ Run `/setchannel` to set where updates are posted\n2️⃣ Use `/adduser` to add LeetCode users to track\n3️⃣ Set up automatic checks with `/managecron add`\n4️⃣ Use `/check` to manually trigger a status check',
-                inline: false
-            }
-        ],
+        description: 'Here are all available commands organized by category.',
+        fields: fields,
         footer: {
             text: 'LeetCode Discord Bot • GitHub: mochiron-desu/leetDiscord'
         },
@@ -612,6 +614,18 @@ async function handleHelp(interaction) {
     };
 
     await interaction.reply({ embeds: [helpEmbed] });
+}
+
+function getCategoryEmoji(category) {
+    const emojis = {
+        'Monitoring': '🔍',
+        'User Management': '👥',
+        'Setup': '⚙️',
+        'Scheduling': '⏰',
+        'Information': 'ℹ️',
+        'Notifications': '🔔'
+    };
+    return emojis[category] || '🔹';
 }
 
 module.exports = { handleInteraction };
