@@ -260,6 +260,10 @@ module.exports = {
     getTelegramUser
 };
 
+const TelegramUser = require('./models/TelegramUser');
+
+// ... imports remain same, add TelegramUser
+
 async function setTelegramToken(guildId, discordId, token) {
     const guild = await Guild.findOne({ guildId });
     if (!guild) throw new Error('Guild not found');
@@ -278,89 +282,52 @@ async function setTelegramToken(guildId, discordId, token) {
     const expires = new Date();
     expires.setMinutes(expires.getMinutes() + 15); // Token valid for 15 minutes
 
-    // Get existing data to preserve enabled flag
-    const existingData = guild.telegramUsers?.get(targetUsername) || {};
-
-    // Use atomic update with $set - this is the most reliable way for Maps
-    const updateKey = `telegramUsers.${targetUsername}`;
-    await Guild.findOneAndUpdate(
-        { guildId },
+    // Upsert TelegramUser
+    await TelegramUser.findOneAndUpdate(
+        { leetcodeUsername: targetUsername },
         {
             $set: {
-                [updateKey]: {
-                    chatId: existingData.chatId || null,
-                    username: targetUsername,
-                    enabled: existingData.enabled !== undefined ? existingData.enabled : true,
-                    tempToken: token,
-                    tokenExpires: expires
-                }
+                leetcodeUsername: targetUsername,
+                userId: discordId,
+                tempToken: token,
+                tokenExpires: expires
+            },
+            $setOnInsert: {
+                isEnabled: true
             }
         },
-        { new: true }
+        { upsert: true, new: true }
     );
 
-    logger.debug(`[setTelegramToken] Generated token for ${targetUsername} in guild ${guildId}. Token: ${token}`);
+    logger.debug(`[setTelegramToken] Generated token for ${targetUsername}. Token: ${token}`);
     return targetUsername;
 }
 
 async function linkTelegramChat(token, chatId) {
-    // Find guild and user with this token
-    // Note: This is inefficient for large scale w/o index, but fine for small bot
-    const guilds = await Guild.find({});
-    logger.debug(`[linkTelegramChat] Scanning ${guilds.length} guilds for token: ${token}`);
+    // Find user with this token
+    const user = await TelegramUser.findOne({ tempToken: token });
 
-    for (const guild of guilds) {
-        logger.debug(`[linkTelegramChat] Checking guild ${guild.guildId}`);
-
-        if (!guild.telegramUsers) {
-            logger.debug(`[linkTelegramChat] Guild ${guild.guildId} has no telegramUsers`);
-            continue;
-        }
-
-        logger.debug(`[linkTelegramChat] Guild ${guild.guildId} telegramUsers size: ${guild.telegramUsers.size}`);
-        logger.debug(`[linkTelegramChat] Guild ${guild.guildId} telegramUsers entries: ${JSON.stringify(Array.from(guild.telegramUsers.entries()))}`);
-
-        for (const [username, userData] of guild.telegramUsers.entries()) {
-            logger.debug(`[linkTelegramChat] Checking user ${username}, stored token: ${userData.tempToken}`);
-
-            if (userData.tempToken === token) {
-                logger.info(`[linkTelegramChat] Found matching token for user ${username}`);
-
-                if (new Date() > userData.tokenExpires) {
-                    logger.warn(`[linkTelegramChat] Token expired for ${username}`);
-                    return { success: false, message: 'Link token has expired. Please generate a new one.' };
-                }
-
-                // Use atomic update with $set
-                const updateKey = `telegramUsers.${username}`;
-                await Guild.findOneAndUpdate(
-                    { guildId: guild.guildId },
-                    {
-                        $set: {
-                            [updateKey]: {
-                                chatId: chatId,
-                                username: username,
-                                enabled: userData.enabled !== undefined ? userData.enabled : true,
-                                tempToken: null,
-                                tokenExpires: null
-                            }
-                        }
-                    },
-                    { new: true }
-                );
-
-                logger.info(`[linkTelegramChat] Successfully linked ${username} to ChatID ${chatId}`);
-
-                return { success: true, message: 'Successfully connected! You will now receive LeetCode notifications here.' };
-            }
-        }
+    if (!user) {
+        logger.warn(`[linkTelegramChat] No matching token found for: ${token}`);
+        return { success: false, message: 'Invalid token. Please check your link.' };
     }
 
-    logger.warn(`[linkTelegramChat] No matching token found for: ${token}`);
-    return { success: false, message: 'Invalid token. Please check your link.' };
+    if (new Date() > user.tokenExpires) {
+        logger.warn(`[linkTelegramChat] Token expired for ${user.leetcodeUsername}`);
+        return { success: false, message: 'Link token has expired. Please generate a new one.' };
+    }
+
+    user.telegramChatId = chatId;
+    user.tempToken = null;
+    user.tokenExpires = null;
+    await user.save();
+
+    logger.info(`[linkTelegramChat] Successfully linked ${user.leetcodeUsername} to ChatID ${chatId}`);
+    return { success: true, message: 'Successfully connected! You will now receive LeetCode notifications.' };
 }
 
 async function toggleTelegramUpdates(guildId, discordId) {
+    // We still need guildId to verify they are in the server, but logic is global
     const guild = await Guild.findOne({ guildId });
     if (!guild) throw new Error('Guild not found');
 
@@ -374,59 +341,52 @@ async function toggleTelegramUpdates(guildId, discordId) {
 
     if (!targetUsername) return { success: false, message: 'You are not registered in this server.' };
 
-    if (!guild.telegramUsers || !guild.telegramUsers.has(targetUsername)) {
+    const user = await TelegramUser.findOne({ leetcodeUsername: targetUsername });
+
+    if (!user || !user.telegramChatId) {
         return { success: false, message: 'You have not connected a Telegram account yet.' };
     }
 
-    const userData = guild.telegramUsers.get(targetUsername);
-    const newEnabledState = !userData.enabled;
-
-    // Use atomic update with $set
-    const updateKey = `telegramUsers.${targetUsername}`;
-    await Guild.findOneAndUpdate(
-        { guildId },
-        {
-            $set: {
-                [updateKey]: {
-                    ...userData,
-                    enabled: newEnabledState
-                }
-            }
-        },
-        { new: true }
-    );
+    user.isEnabled = !user.isEnabled;
+    await user.save();
 
     return {
         success: true,
-        message: `Telegram updates have been ${newEnabledState ? 'enabled' : 'disabled'}.`
+        message: `Telegram updates have been ${user.isEnabled ? 'enabled' : 'disabled'} globally.`
     };
 }
 
 async function getTelegramUser(guildId, username) {
-    const guild = await Guild.findOne({ guildId });
-    if (!guild || !guild.telegramUsers) return null;
-    return guild.telegramUsers.get(username);
+    // GuildId technically not needed for global lookup, but keeping signature for compatibility if needed
+    return await TelegramUser.findOne({ leetcodeUsername: username });
 }
 
 async function getConnectionByChatId(chatId) {
+    const user = await TelegramUser.findOne({ telegramChatId: chatId.toString() });
+    if (!user) return null;
+
+    // Find all guilds this user is tracked in
     const guilds = await Guild.find({});
+    const connectedGuilds = [];
+
     for (const guild of guilds) {
-        if (!guild.telegramUsers) continue;
-        for (const [username, userData] of guild.telegramUsers.entries()) {
-            if (userData.chatId === chatId.toString()) {
-                const userStats = guild.userStats ? guild.userStats.get(username) : null;
-                return {
-                    guildId: guild.guildId,
-                    channelId: guild.channelId,
-                    totalUsers: guild.users ? guild.users.size : 0,
-                    username,
-                    userStats,
-                    userData
-                };
-            }
+        if (guild.users && guild.users.has(user.leetcodeUsername)) {
+            // We usually don't store guild name in DB, only ID. 
+            // In a real bot we'd fetch from Discord client, but configManager might not have client access easily.
+            // We will return ID for now, or just count.
+            connectedGuilds.push({
+                guildId: guild.guildId,
+                channelId: guild.channelId
+            });
         }
     }
-    return null;
+
+    return {
+        username: user.leetcodeUsername,
+        userId: user.userId,
+        connectedGuilds: connectedGuilds,
+        userData: user
+    };
 }
 
 module.exports = {

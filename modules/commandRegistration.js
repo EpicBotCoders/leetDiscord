@@ -130,6 +130,13 @@ const commandDefinitions = [
                 subcommand
                     .setName('status')
                     .setDescription('Check your Telegram connection status'))
+    },
+    {
+        category: 'Admin',
+        data: new SlashCommandBuilder()
+            .setName('forcecheck')
+            .setDescription('Manually trigger the daily check for this server (Admin only)')
+            .setDefaultMemberPermissions(0x8) // Administrator permission
     }
 ];
 

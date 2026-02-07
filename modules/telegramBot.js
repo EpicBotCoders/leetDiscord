@@ -39,25 +39,33 @@ async function startTelegramBot() {
             } else if (text === '/status') {
                 const connection = await getConnectionByChatId(chatId);
                 if (connection) {
-                    bot.sendMessage(chatId, `✅ Connected as: ${connection.username}\nServer ID: ${connection.guildId}`);
+                    let msg = `✅ **Connected Globally**\n\n👤 **LeetCode**: ${connection.username}\n`;
+
+                    if (connection.connectedGuilds && connection.connectedGuilds.length > 0) {
+                        msg += `\nTesting in **${connection.connectedGuilds.length}** Discord Server(s):\n`;
+                        connection.connectedGuilds.forEach(g => {
+                            msg += `- Server ID: \`${g.guildId}\`\n`;
+                        });
+                    } else {
+                        msg += `\n⚠️ You are linked, but not currently tracked in any Discord servers. Ask an admin to \`/adduser ${connection.username}\`.`;
+                    }
+
+                    bot.sendMessage(chatId, msg, { parse_mode: 'Markdown' });
                 } else {
                     bot.sendMessage(chatId, '❌ Not connected. Use /telegram connect in Discord to link your account.');
                 }
             } else if (text === '/info') {
                 const connection = await getConnectionByChatId(chatId);
                 if (connection) {
-                    bot.sendMessage(chatId, `🏢 Server Info\nServer ID: ${connection.guildId}\nChannel ID: ${connection.channelId}\nTracked Users: ${connection.totalUsers}`);
+                    bot.sendMessage(chatId, `👤 Account Info\nUsername: ${connection.username}\n\nYour Telegram account is linked globally. You will receive notifications from any server where you are tracked.`);
                 } else {
                     bot.sendMessage(chatId, '❌ Not connected.');
                 }
             } else if (text === '/leetstatus') {
                 const connection = await getConnectionByChatId(chatId);
-                if (connection && connection.userStats) {
-                    const stats = connection.userStats;
-                    const lastUpdated = stats.lastUpdated ? new Date(stats.lastUpdated).toLocaleString() : 'Never';
-                    bot.sendMessage(chatId, `📊 LeetCode Stats for ${connection.username}\n\n🔥 Streak: ${stats.streak} days\n📅 Active Days: ${stats.totalActiveDays}\n🕐 Last Updated: ${lastUpdated}`);
-                } else if (connection) {
-                    bot.sendMessage(chatId, `📊 LeetCode Stats for ${connection.username}\n\nStats not yet available. Please wait for the next scheduled check.`);
+                if (connection) {
+                    // TODO: enhanced stats lookup across guilds
+                    bot.sendMessage(chatId, `📊 LeetCode Stats for ${connection.username}\n\nPlease check the Discord server for your detailed statistics.`);
                 } else {
                     bot.sendMessage(chatId, '❌ Not connected.');
                 }

@@ -68,177 +68,186 @@ async function scheduleDailyCheck(client, guildId, channelId, schedule) {
     }
 
     const job = cron.schedule(schedule, async () => {
-        try {
-            const guild = await Guild.findOne({ guildId });
-            if (!guild) {
-                logger.error(`Guild ${guildId} not found in database`);
-                return;
-            }
-
-            const channel = await client.channels.fetch(guild.channelId);
-            if (!channel) {
-                logger.error(`Channel ${guild.channelId} not found for guild ${guildId}`);
-                return;
-            }
-
-            // Check if bot has permission to send messages in this channel
-            const botMember = await channel.guild.members.fetchMe();
-            const permissions = channel.permissionsFor(botMember);
-
-            if (!permissions?.has(PermissionsBitField.Flags.SendMessages)) {
-                logger.error(`Bot lacks permission to send messages in channel ${channel.name} (${channel.id}) in guild ${guild.name} (${guildId})`);
-                // Try to notify guild owner about permission issue
-                try {
-                    const guildOwner = await channel.guild.fetchOwner();
-                    await guildOwner.send(
-                        'I don\'t have permission to send messages in #' + channel.name + ' in ' + guild.name + '. ' +
-                        'Please grant me the \'Send Messages\' permission in that channel or set a different channel using /setchannel.'
-                    );
-                } catch (dmError) {
-                    logger.error('Failed to notify guild owner about permissions:', dmError);
-                }
-                return;
-            }
-
-            const users = Object.fromEntries(guild.users);
-            if (Object.keys(users).length === 0) {
-                return;
-            }
-
-            // Get today's daily challenge slug and problem details
-            const dailySlug = await getDailySlug();
-            if (!dailySlug) {
-                logger.error('Failed to fetch daily challenge slug');
-                return;
-            }
-
-            // Fetch problem details to get difficulty
-            const problemDetails = await axios.get(`https://leetcode-api-pied.vercel.app/problem/${dailySlug}`);
-            const problem = problemDetails.data;
-            if (!problem || !problem.difficulty) {
-                logger.error('Failed to fetch problem details or missing difficulty');
-                return;
-            }
-
-            const incompleteUsers = [];
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            for (const [username, discordId] of Object.entries(users)) {
-                try {
-                    // Update calendar stats for this user
-                    try {
-                        await updateUserStats(guildId, username);
-                        logger.debug(`Updated calendar stats for ${username} in guild ${guildId}`);
-                    } catch (statsError) {
-                        logger.warn(`Could not update calendar stats for ${username}:`, statsError.message);
-                    }
-
-                    const submissions = await getUserSubmissions(username);
-                    if (submissions && submissions.length > 0) {
-                        // Check if user has completed today's challenge
-                        const todaysSubmission = submissions.find(sub =>
-                            sub.titleSlug === dailySlug &&
-                            sub.statusDisplay === 'Accepted'
-                        );
-
-                        if (todaysSubmission) {
-                            // Check if we already have a submission record for today
-                            const existingSubmission = await DailySubmission.findOne({
-                                guildId,
-                                userId: discordId || username,
-                                leetcodeUsername: username,
-                                questionSlug: dailySlug,
-                                date: {
-                                    $gte: today,
-                                    $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
-                                }
-                            });
-
-                            // Only create new submission if one doesn't exist
-                            if (!existingSubmission) {
-                                const submissionTime = parseSubmissionTime(todaysSubmission);
-                                await DailySubmission.create({
-                                    guildId,
-                                    userId: discordId || username,
-                                    leetcodeUsername: username,
-                                    date: today,
-                                    questionTitle: problem.title,
-                                    questionSlug: dailySlug,
-                                    difficulty: problem.difficulty,
-                                    submissionTime
-                                });
-                            }
-                        } else {
-                            // Mention user in Discord
-                            const mention = discordId ? `<@${discordId}>` : username;
-                            incompleteUsers.push(mention);
-
-                            // Send Telegram Notification
-                            try {
-                                const telegramUser = await getGuildConfig(guildId).then(g => g.telegramUsers?.get(username));
-                                if (telegramUser && telegramUser.chatId && telegramUser.enabled) {
-                                    const message = `⚠️ Reminder: You haven't completed today's LeetCode Daily Challenge yet!\n\nProblem: ${problem.title}\nDifficulty: ${problem.difficulty}\nLink: https://leetcode.com/problems/${dailySlug}/`;
-                                    await sendTelegramMessage(telegramUser.chatId, message);
-                                    logger.info(`Sent Telegram reminder to ${username} (ChatID: ${telegramUser.chatId})`);
-                                }
-                            } catch (tgError) {
-                                logger.error(`Error sending Telegram reminder to ${username}:`, tgError);
-                            }
-                        }
-                    } else {
-                        // If no submissions at all, add to incomplete users
-                        const mention = discordId ? `<@${discordId}>` : username;
-                        incompleteUsers.push(mention);
-                        // Send Telegram Notification (Duplicate logic, consider refactoring to function if used more)
-                        try {
-                            const telegramUser = await getGuildConfig(guildId).then(g => g.telegramUsers?.get(username));
-                            if (telegramUser && telegramUser.chatId && telegramUser.enabled) {
-                                const message = `⚠️ Reminder: You haven't completed today's LeetCode Daily Challenge yet!\n\nProblem: ${problem.title}\nDifficulty: ${problem.difficulty}\nLink: https://leetcode.com/problems/${dailySlug}/`;
-                                await sendTelegramMessage(telegramUser.chatId, message);
-                                logger.info(`Sent Telegram reminder to ${username} (ChatID: ${telegramUser.chatId})`);
-                            }
-                        } catch (tgError) {
-                            logger.error(`Error sending Telegram reminder to ${username}:`, tgError);
-                        }
-                    }
-                } catch (error) {
-                    logger.error(`Error fetching submissions for ${username}:`, error);
-                }
-            }
-
-            // Send a single message mentioning all users who haven't completed the challenge
-            if (incompleteUsers.length > 0) {
-                try {
-                    const message = `⚠️ ${incompleteUsers.join(', ')}\nDon't forget to complete today's LeetCode Daily Challenge!`;
-                    await channel.send(message);
-                } catch (sendError) {
-                    if (sendError.code === 50001 || sendError.code === 50013) { // Missing Access or Missing Permissions
-                        logger.error(`Permission error when sending message in channel ${channel.name} (${channel.id}):`, sendError);
-                        // Try to notify guild owner
-                        try {
-                            const guildOwner = await channel.guild.fetchOwner();
-                            await guildOwner.send(
-                                'I encountered a permission error when trying to send messages in #' + channel.name + ' in ' + guild.name + '. ' +
-                                'Please check my permissions and make sure I can:\n' +
-                                '- View the channel\n' +
-                                '- Send messages\n' +
-                                '- Mention users (if you want me to ping people)'
-                            );
-                        } catch (dmError) {
-                            logger.error('Failed to notify guild owner about permissions:', dmError);
-                        }
-                    } else {
-                        logger.error(`Error sending message in channel ${channel.name} (${channel.id}):`, sendError);
-                    }
-                }
-            }
-        } catch (error) {
-            logger.error('Error in scheduled task:', error);
-        }
+        await performDailyCheck(client, guildId, channelId);
     });
 
     activeCronJobs.set(jobKey, job);
+}
+
+async function performDailyCheck(client, guildId, channelId) {
+    try {
+        const guild = await Guild.findOne({ guildId });
+        if (!guild) {
+            logger.error(`Guild ${guildId} not found in database`);
+            return;
+        }
+
+        const channel = await client.channels.fetch(guild.channelId);
+        if (!channel) {
+            logger.error(`Channel ${guild.channelId} not found for guild ${guildId}`);
+            return;
+        }
+
+        // Check if bot has permission to send messages in this channel
+        const botMember = await channel.guild.members.fetchMe();
+        const permissions = channel.permissionsFor(botMember);
+
+        if (!permissions?.has(PermissionsBitField.Flags.SendMessages)) {
+            logger.error(`Bot lacks permission to send messages in channel ${channel.name} (${channel.id}) in guild ${guild.name} (${guildId})`);
+            // Try to notify guild owner about permission issue
+            try {
+                const guildOwner = await channel.guild.fetchOwner();
+                await guildOwner.send(
+                    'I don\'t have permission to send messages in #' + channel.name + ' in ' + guild.name + '. ' +
+                    'Please grant me the \'Send Messages\' permission in that channel or set a different channel using /setchannel.'
+                );
+            } catch (dmError) {
+                logger.error('Failed to notify guild owner about permissions:', dmError);
+            }
+            return;
+        }
+
+        const users = Object.fromEntries(guild.users);
+        if (Object.keys(users).length === 0) {
+            return;
+        }
+
+        // Get today's daily challenge slug and problem details
+        const dailySlug = await getDailySlug();
+        if (!dailySlug) {
+            logger.error('Failed to fetch daily challenge slug');
+            return;
+        }
+
+        // Fetch problem details to get difficulty
+        const problemDetails = await axios.get(`https://leetcode-api-pied.vercel.app/problem/${dailySlug}`);
+        const problem = problemDetails.data;
+        if (!problem || !problem.difficulty) {
+            logger.error('Failed to fetch problem details or missing difficulty');
+            return;
+        }
+
+        const incompleteUsers = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (const [username, discordId] of Object.entries(users)) {
+            try {
+                // Update calendar stats for this user
+                try {
+                    await updateUserStats(guildId, username);
+                    logger.debug(`Updated calendar stats for ${username} in guild ${guildId}`);
+                } catch (statsError) {
+                    logger.warn(`Could not update calendar stats for ${username}:`, statsError.message);
+                }
+
+                const submissions = await getUserSubmissions(username);
+                let hasCompleted = false;
+
+                if (submissions && submissions.length > 0) {
+                    // Check if user has completed today's challenge
+                    const todaysSubmission = submissions.find(sub =>
+                        sub.titleSlug === dailySlug &&
+                        sub.statusDisplay === 'Accepted'
+                    );
+
+                    if (todaysSubmission) {
+                        hasCompleted = true;
+                        // Check if we already have a submission record for today
+                        const existingSubmission = await DailySubmission.findOne({
+                            guildId,
+                            userId: discordId || username,
+                            leetcodeUsername: username,
+                            questionSlug: dailySlug,
+                            date: {
+                                $gte: today,
+                                $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+                            }
+                        });
+
+                        // Only create new submission if one doesn't exist
+                        if (!existingSubmission) {
+                            const submissionTime = parseSubmissionTime(todaysSubmission);
+                            await DailySubmission.create({
+                                guildId,
+                                userId: discordId || username,
+                                leetcodeUsername: username,
+                                date: today,
+                                questionTitle: problem.title,
+                                questionSlug: dailySlug,
+                                difficulty: problem.difficulty,
+                                submissionTime
+                            });
+                        }
+                    }
+                }
+
+                if (!hasCompleted) {
+                    // Mention user in Discord
+                    const mention = discordId ? `<@${discordId}>` : username;
+                    incompleteUsers.push(mention);
+
+                    const TelegramUser = require('./models/TelegramUser');
+
+                    // ... imports
+
+                    // Send Telegram Notification
+                    try {
+                        // Look up global TelegramUser
+                        const telegramUser = await TelegramUser.findOne({ leetcodeUsername: username });
+
+                        if (telegramUser && telegramUser.telegramChatId && telegramUser.isEnabled) {
+                            const guildName = channel.guild ? channel.guild.name : 'LeetCode Bot';
+                            const message = `⚠️ Reminder from **${guildName}**:\n\nYou haven't completed today's LeetCode Daily Challenge yet!\n\nProblem: ${problem.title}\nDifficulty: ${problem.difficulty}\nLink: https://leetcode.com/problems/${dailySlug}/`;
+                            await sendTelegramMessage(telegramUser.telegramChatId, message);
+                            logger.info(`Sent Telegram reminder to ${username} (ChatID: ${telegramUser.telegramChatId})`);
+                        } else {
+                            logger.debug(`[TelegramDebug] No enabled Telegram user found for ${username}`);
+                        }
+                    } catch (tgError) {
+                        logger.error(`Error sending Telegram reminder to ${username}:`, tgError);
+                    }
+                }
+            } catch (error) {
+                logger.error(`Error fetching submissions for ${username}:`, error);
+            }
+        }
+
+        // Send a single message mentioning all users who haven't completed the challenge
+        if (incompleteUsers.length > 0) {
+            try {
+                const message = `⚠️ ${incompleteUsers.join(', ')}\nDon't forget to complete today's LeetCode Daily Challenge!`;
+                await channel.send(message);
+                return `Check complete. Notification sent to ${incompleteUsers.length} user(s).`;
+            } catch (sendError) {
+                if (sendError.code === 50001 || sendError.code === 50013) { // Missing Access or Missing Permissions
+                    logger.error(`Permission error when sending message in channel ${channel.name} (${channel.id}):`, sendError);
+                    // Try to notify guild owner
+                    try {
+                        const guildOwner = await channel.guild.fetchOwner();
+                        await guildOwner.send(
+                            'I encountered a permission error when trying to send messages in #' + channel.name + ' in ' + guild.name + '. ' +
+                            'Please check my permissions and make sure I can:\n' +
+                            '- View the channel\n' +
+                            '- Send messages\n' +
+                            '- Mention users (if you want me to ping people)'
+                        );
+                    } catch (dmError) {
+                        logger.error('Failed to notify guild owner about permissions:', dmError);
+                    }
+                    return `Check failed: Permission error sending message.`;
+                } else {
+                    logger.error(`Error sending message in channel ${channel.name} (${channel.id}):`, sendError);
+                    return `Check failed: Error sending message.`;
+                }
+            }
+        } else {
+            return `Check complete. All tracked users have completed the daily challenge!`;
+        }
+    } catch (error) {
+        logger.error('Error in scheduled task:', error);
+        return `Check failed: Internal error.`;
+    }
 }
 
 async function updateGuildCronJobs(guildId) {
@@ -290,5 +299,6 @@ module.exports = {
     initializeScheduledTasks,
     scheduleDailyCheck,
     updateGuildCronJobs,
-    stopAllCronJobs
+    stopAllCronJobs,
+    performDailyCheck
 };

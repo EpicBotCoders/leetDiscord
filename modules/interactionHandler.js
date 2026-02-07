@@ -1,7 +1,7 @@
 const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs, setTelegramToken, toggleTelegramUpdates, getTelegramUser } = require('./configManager');
 const { commandDefinitions } = require('./commandRegistration');
 const { enhancedCheck, getUserCalendar } = require('./apiUtils');
-const { updateGuildCronJobs } = require('./scheduledTasks');
+const { updateGuildCronJobs, performDailyCheck } = require('./scheduledTasks');
 const logger = require('./logger');
 const { v4: uuidv4 } = require('uuid');
 
@@ -50,6 +50,9 @@ async function handleInteraction(interaction) {
                 break;
             case 'telegram':
                 await handleTelegram(interaction);
+                break;
+            case 'forcecheck':
+                await handleForceCheck(interaction);
                 break;
             default:
                 await interaction.reply('Unknown command.');
@@ -159,14 +162,14 @@ async function handleTelegram(interaction) {
             }
 
             const telegramUser = await getTelegramUser(interaction.guildId, targetUsername);
-            if (telegramUser && telegramUser.chatId) {
+            if (telegramUser && telegramUser.telegramChatId) {
                 await interaction.editReply({
-                    content: `✅ Telegram Connected\nUpdates Enabled: ${telegramUser.enabled ? 'Yes' : 'No'}\nChat ID: ${telegramUser.chatId}`,
+                    content: `✅ **Telegram Connected Globally**\n\n👤 **LeetCode Account**: ${targetUsername}\n🔔 **Notifications**: ${telegramUser.isEnabled ? 'Enabled' : 'Disabled'}\n\nYour account is linked globally. You will receive notifications for this server and any other servers where you are tracked.`,
                     ephemeral: true
                 });
             } else {
                 await interaction.editReply({
-                    content: '❌ Telegram Not Connected\nUse `/telegram connect` to link your account.',
+                    content: '❌ **Telegram Not Connected**\n\nUse `/telegram connect` to link your account. This will link your account globally for all servers.',
                     ephemeral: true
                 });
             }
@@ -626,6 +629,23 @@ function getCategoryEmoji(category) {
         'Notifications': '🔔'
     };
     return emojis[category] || '🔹';
+}
+
+async function handleForceCheck(interaction) {
+    if (!interaction.memberPermissions.has('Administrator')) {
+        await interaction.reply({ content: 'You need Administrator permissions to use this command.', ephemeral: true });
+        return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+        const result = await performDailyCheck(interaction.client, interaction.guildId, interaction.channelId);
+        await interaction.editReply(result);
+    } catch (error) {
+        logger.error('Error in forcecheck:', error);
+        await interaction.editReply('An error occurred while performing the check.');
+    }
 }
 
 module.exports = { handleInteraction };
