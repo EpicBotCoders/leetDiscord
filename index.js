@@ -8,6 +8,7 @@ const { loadConfig } = require('./modules/configManager');
 const { connectDB } = require('./modules/models/db');
 const logger = require('./modules/logger');
 const { initializeScheduledTasks, stopAllCronJobs } = require('./modules/scheduledTasks');
+const { startTelegramBot } = require('./modules/telegramBot');
 
 async function sendWelcomeMessage(guild) {
     try {
@@ -86,6 +87,9 @@ async function main() {
         });
 
         await client.login(config.token);
+
+        // Start Telegram Bot
+        await startTelegramBot();
 
         // Setup graceful shutdown handlers
         setupGracefulShutdown(client);

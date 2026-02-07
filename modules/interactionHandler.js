@@ -1,7 +1,8 @@
-const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs } = require('./configManager');
+const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs, setTelegramToken, toggleTelegramUpdates, getTelegramUser } = require('./configManager');
 const { enhancedCheck, getUserCalendar } = require('./apiUtils');
 const { updateGuildCronJobs } = require('./scheduledTasks');
 const logger = require('./logger');
+const { v4: uuidv4 } = require('uuid');
 
 async function handleInteraction(interaction) {
     logger.info(`Interaction received: ${interaction.commandName}`);
@@ -46,6 +47,9 @@ async function handleInteraction(interaction) {
             case 'help':
                 await handleHelp(interaction);
                 break;
+            case 'telegram':
+                await handleTelegram(interaction);
+                break;
             default:
                 await interaction.reply('Unknown command.');
         }
@@ -69,6 +73,110 @@ async function handleInteraction(interaction) {
         }
     }
 }
+async function handleTelegram(interaction) {
+    if (!interaction.guildId) {
+        await interaction.reply('This command can only be used in a server.');
+        return;
+    }
+
+    const subcommand = interaction.options.getSubcommand();
+
+    if (subcommand === 'connect') {
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+            // Check if user is registered and already connected
+            const users = await getGuildUsers(interaction.guildId);
+            let targetUsername = null;
+            for (const [u, id] of Object.entries(users)) {
+                if (id === interaction.user.id) {
+                    targetUsername = u;
+                    break;
+                }
+            }
+
+            if (targetUsername) {
+                const telegramUser = await getTelegramUser(interaction.guildId, targetUsername);
+                if (telegramUser && telegramUser.chatId) {
+                    await interaction.editReply({
+                        content: `✅ You are already connected to Telegram as **${targetUsername}**.\nTo check your status, use the \`/telegram status\` command.`,
+                        ephemeral: true
+                    });
+                    return;
+                }
+            }
+
+            const token = uuidv4();
+            const username = await setTelegramToken(interaction.guildId, interaction.user.id, token);
+
+            const botName = process.env.TELEGRAM_BOT_NAME || 'YourLeetCodeBot';
+            const link = `https://t.me/${botName}?start=${token}`;
+
+            await interaction.editReply({
+                content: `Click this link to connect your Telegram account: ${link}\n\nThis link is valid for 15 minutes.`,
+                ephemeral: true
+            });
+        } catch (error) {
+            logger.error('Error generating Telegram link:', error);
+            await interaction.editReply({
+                content: `Error: ${error.message}. Warning: You must be registered with /adduser first.`,
+                ephemeral: true
+            });
+        }
+    } else if (subcommand === 'toggle') {
+        await interaction.deferReply({ ephemeral: true });
+        try {
+            const result = await toggleTelegramUpdates(interaction.guildId, interaction.user.id);
+            await interaction.editReply({ content: result.message, ephemeral: true });
+        } catch (error) {
+            logger.error('Error toggling Telegram updates:', error);
+            await interaction.editReply({ content: 'An error occurred while toggling updates.', ephemeral: true });
+        }
+    } else if (subcommand === 'status') {
+        await interaction.deferReply({ ephemeral: true });
+        try {
+            // We need to resolve username from discord ID first to get status
+            // This is a bit round-about, maybe configManager should have a getTelegramUserByDiscordId
+            // For now, using what we have: try toggle to get status? No, that changes it.
+            // Let's rely on setTelegramToken logic to find username or just check configManager
+
+            // Quick fix: reuse toggle logic without saving? No.
+            // Better: Use getTelegramUser but we need username.
+            // Let's iterate users to find username again (common pattern, maybe refactor later)
+            const users = await getGuildUsers(interaction.guildId);
+            let targetUsername = null;
+            for (const [u, id] of Object.entries(users)) {
+                if (id === interaction.user.id) {
+                    targetUsername = u;
+                    break;
+                }
+            }
+
+            if (!targetUsername) {
+                await interaction.editReply({ content: 'You are not registered in this server.', ephemeral: true });
+                return;
+            }
+
+            const telegramUser = await getTelegramUser(interaction.guildId, targetUsername);
+            if (telegramUser && telegramUser.chatId) {
+                await interaction.editReply({
+                    content: `✅ Telegram Connected\nUpdates Enabled: ${telegramUser.enabled ? 'Yes' : 'No'}\nChat ID: ${telegramUser.chatId}`,
+                    ephemeral: true
+                });
+            } else {
+                await interaction.editReply({
+                    content: '❌ Telegram Not Connected\nUse `/telegram connect` to link your account.',
+                    ephemeral: true
+                });
+            }
+        } catch (error) {
+            logger.error('Error checking Telegram status:', error);
+            await interaction.editReply({ content: 'An error occurred.', ephemeral: true });
+        }
+    }
+}
+
+
 
 async function handleCheck(interaction) {
     await interaction.deferReply();

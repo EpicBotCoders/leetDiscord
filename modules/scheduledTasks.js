@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const { getUserSubmissions, getDailySlug } = require('./apiUtils');
-const { updateUserStats } = require('./configManager');
+const { updateUserStats, getGuildConfig } = require('./configManager');
+const { sendTelegramMessage } = require('./telegramBot');
 const { PermissionsBitField } = require('discord.js');
 const axios = require('axios');
 const logger = require('./logger');
@@ -169,13 +170,37 @@ async function scheduleDailyCheck(client, guildId, channelId, schedule) {
                                 });
                             }
                         } else {
+                            // Mention user in Discord
                             const mention = discordId ? `<@${discordId}>` : username;
                             incompleteUsers.push(mention);
+
+                            // Send Telegram Notification
+                            try {
+                                const telegramUser = await getGuildConfig(guildId).then(g => g.telegramUsers?.get(username));
+                                if (telegramUser && telegramUser.chatId && telegramUser.enabled) {
+                                    const message = `⚠️ Reminder: You haven't completed today's LeetCode Daily Challenge yet!\n\nProblem: ${problem.title}\nDifficulty: ${problem.difficulty}\nLink: https://leetcode.com/problems/${dailySlug}/`;
+                                    await sendTelegramMessage(telegramUser.chatId, message);
+                                    logger.info(`Sent Telegram reminder to ${username} (ChatID: ${telegramUser.chatId})`);
+                                }
+                            } catch (tgError) {
+                                logger.error(`Error sending Telegram reminder to ${username}:`, tgError);
+                            }
                         }
                     } else {
                         // If no submissions at all, add to incomplete users
                         const mention = discordId ? `<@${discordId}>` : username;
                         incompleteUsers.push(mention);
+                        // Send Telegram Notification (Duplicate logic, consider refactoring to function if used more)
+                        try {
+                            const telegramUser = await getGuildConfig(guildId).then(g => g.telegramUsers?.get(username));
+                            if (telegramUser && telegramUser.chatId && telegramUser.enabled) {
+                                const message = `⚠️ Reminder: You haven't completed today's LeetCode Daily Challenge yet!\n\nProblem: ${problem.title}\nDifficulty: ${problem.difficulty}\nLink: https://leetcode.com/problems/${dailySlug}/`;
+                                await sendTelegramMessage(telegramUser.chatId, message);
+                                logger.info(`Sent Telegram reminder to ${username} (ChatID: ${telegramUser.chatId})`);
+                            }
+                        } catch (tgError) {
+                            logger.error(`Error sending Telegram reminder to ${username}:`, tgError);
+                        }
                     }
                 } catch (error) {
                     logger.error(`Error fetching submissions for ${username}:`, error);

@@ -20,6 +20,8 @@
     "mongodb": "^6.16.0",
     "mongoose": "^8.14.1",
     "node-cron": "^3.0.3",
+    "node-telegram-bot-api": "^0.67.0",
+    "uuid": "^9.0.1",
     "winston": "^3.17.0"
   },
   "devDependencies": {
