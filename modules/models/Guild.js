@@ -15,6 +15,16 @@ const guildSchema = new mongoose.Schema({
         of: String,
         default: {}
     },
+    userStats: {
+        type: Map,
+        of: {
+            streak: { type: Number, default: 0 },
+            totalActiveDays: { type: Number, default: 0 },
+            activeYears: { type: [Number], default: [] },
+            lastUpdated: { type: Date, default: null }
+        },
+        default: {}
+    },
     cronJobs: [{
         schedule: {
             type: String,

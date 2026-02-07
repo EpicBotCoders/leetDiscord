@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const { getUserSubmissions, getDailySlug } = require('./apiUtils');
+const { updateUserStats } = require('./configManager');
 const { PermissionsBitField } = require('discord.js');
 const axios = require('axios');
 const logger = require('./logger');
@@ -41,7 +42,7 @@ async function initializeScheduledTasks(client) {
     try {
         // Get all guilds from MongoDB
         const guilds = await Guild.find({});
-        
+
         for (const guild of guilds) {
             // Initialize cron jobs for each guild
             guild.cronJobs.forEach(job => {
@@ -58,7 +59,7 @@ async function initializeScheduledTasks(client) {
 
 async function scheduleDailyCheck(client, guildId, channelId, schedule) {
     const jobKey = `${guildId}-${schedule}`;
-    
+
     // Clear existing job if it exists
     if (activeCronJobs.has(jobKey)) {
         activeCronJobs.get(jobKey).stop();
@@ -82,7 +83,7 @@ async function scheduleDailyCheck(client, guildId, channelId, schedule) {
             // Check if bot has permission to send messages in this channel
             const botMember = await channel.guild.members.fetchMe();
             const permissions = channel.permissionsFor(botMember);
-            
+
             if (!permissions?.has(PermissionsBitField.Flags.SendMessages)) {
                 logger.error(`Bot lacks permission to send messages in channel ${channel.name} (${channel.id}) in guild ${guild.name} (${guildId})`);
                 // Try to notify guild owner about permission issue
@@ -124,11 +125,19 @@ async function scheduleDailyCheck(client, guildId, channelId, schedule) {
 
             for (const [username, discordId] of Object.entries(users)) {
                 try {
+                    // Update calendar stats for this user
+                    try {
+                        await updateUserStats(guildId, username);
+                        logger.debug(`Updated calendar stats for ${username} in guild ${guildId}`);
+                    } catch (statsError) {
+                        logger.warn(`Could not update calendar stats for ${username}:`, statsError.message);
+                    }
+
                     const submissions = await getUserSubmissions(username);
                     if (submissions && submissions.length > 0) {
                         // Check if user has completed today's challenge
-                        const todaysSubmission = submissions.find(sub => 
-                            sub.titleSlug === dailySlug && 
+                        const todaysSubmission = submissions.find(sub =>
+                            sub.titleSlug === dailySlug &&
                             sub.statusDisplay === 'Accepted'
                         );
 
@@ -218,7 +227,7 @@ async function updateGuildCronJobs(guildId) {
         // Clear all existing jobs for this guild
         const guildJobKeys = Array.from(activeCronJobs.keys())
             .filter(key => key.startsWith(guildId));
-        
+
         guildJobKeys.forEach(key => {
             activeCronJobs.get(key).stop();
             activeCronJobs.delete(key);

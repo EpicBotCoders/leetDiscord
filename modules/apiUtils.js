@@ -6,11 +6,13 @@ const DailySubmission = require('./models/DailySubmission');
 const cache = {
     dailySlug: { value: null, expiry: 0 },
     problemDetails: new Map(),
-    userSubmissions: new Map()
+    userSubmissions: new Map(),
+    userCalendar: new Map()
 };
 
 const TTL = {
-    userSubmissions: 60 * 1000        // 1 minute
+    userSubmissions: 60 * 1000,        // 1 minute
+    userCalendar: 24 * 60 * 60 * 1000  // 1 day
 };
 
 function getNextUtcMidnightTimestamp() {
@@ -62,7 +64,7 @@ async function getProblemDetails(slug) {
     try {
         logger.info(`Fetching problem details for slug: ${slug}`);
         const res = await axios.get(`https://leetcode-api-pied.vercel.app/problem/${slug}`);
-        
+
         cache.problemDetails.set(slug, {
             value: res.data,
             expiry: getNextUtcMidnightTimestamp()
@@ -92,6 +94,29 @@ async function getUserSubmissions(username) {
         return res.data;
     } catch (error) {
         logger.error(`Error fetching submissions for user: ${username}`, error);
+        throw error;
+    }
+}
+
+// Fetch user's calendar data with cache
+async function getUserCalendar(username, year = null) {
+    const now = Date.now();
+    const currentYear = year || new Date().getFullYear();
+    const cacheKey = `${username}-${currentYear}`;
+    const cached = cache.userCalendar.get(cacheKey);
+
+    if (cached && now - cached.timestamp < TTL.userCalendar) {
+        logger.info(`Returning cached calendar for ${username} (year: ${currentYear})`);
+        return cached.value;
+    }
+
+    try {
+        logger.info(`Fetching calendar for user: ${username} (year: ${currentYear})`);
+        const res = await axios.get(`https://leetcode-api-pied.vercel.app/user/${username}/calendar?year=${currentYear}`);
+        cache.userCalendar.set(cacheKey, { value: res.data, timestamp: now });
+        return res.data;
+    } catch (error) {
+        logger.error(`Error fetching calendar for user: ${username}`, error);
         throw error;
     }
 }
@@ -232,4 +257,4 @@ async function enhancedCheck(users, client, channelId) {
     }
 }
 
-module.exports = { getDailySlug, getUserSubmissions, checkUser, enhancedCheck };
+module.exports = { getDailySlug, getUserSubmissions, getUserCalendar, checkUser, enhancedCheck };
