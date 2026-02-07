@@ -25,6 +25,17 @@ const guildSchema = new mongoose.Schema({
         },
         default: {}
     },
+    telegramUsers: {
+        type: Map,
+        of: {
+            chatId: { type: String, default: null },
+            username: { type: String, required: true }, // LeetCode username
+            enabled: { type: Boolean, default: true },
+            tempToken: { type: String, default: null },
+            tokenExpires: { type: Date, default: null }
+        },
+        default: {}
+    },
     cronJobs: [{
         schedule: {
             type: String,

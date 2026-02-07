@@ -94,6 +94,22 @@ const commands = [
     new SlashCommandBuilder()
         .setName('help')
         .setDescription('Display all available commands and their usage')
+        .toJSON(),
+    new SlashCommandBuilder()
+        .setName('telegram')
+        .setDescription('Manage Telegram notifications')
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('connect')
+                .setDescription('Link your Telegram account to receive notifications'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('toggle')
+                .setDescription('Enable or disable Telegram notifications'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('status')
+                .setDescription('Check your Telegram connection status'))
         .toJSON()
 ];
 
