@@ -244,8 +244,26 @@ async function updateGuildCronJobs(guildId) {
     }
 }
 
+function stopAllCronJobs() {
+    logger.info('Stopping all cron jobs...');
+    let stoppedCount = 0;
+
+    activeCronJobs.forEach((job, key) => {
+        try {
+            job.stop();
+            stoppedCount++;
+        } catch (error) {
+            logger.error(`Error stopping cron job ${key}:`, error);
+        }
+    });
+
+    activeCronJobs.clear();
+    logger.info(`Stopped ${stoppedCount} cron job(s)`);
+}
+
 module.exports = {
     initializeScheduledTasks,
     scheduleDailyCheck,
-    updateGuildCronJobs
+    updateGuildCronJobs,
+    stopAllCronJobs
 };

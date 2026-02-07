@@ -80,6 +80,14 @@ const commands = [
                 .setDescription('List all scheduled check times'))
         .toJSON(),
     new SlashCommandBuilder()
+        .setName('leetstats')
+        .setDescription('View LeetCode statistics')
+        .addBooleanOption(option =>
+            option.setName('show_all')
+                .setDescription('Show stats for all registered members (default: your own stats)')
+                .setRequired(false))
+        .toJSON(),
+    new SlashCommandBuilder()
         .setName('botinfo')
         .setDescription('Display information about the bot and its GitHub repository')
         .toJSON(),

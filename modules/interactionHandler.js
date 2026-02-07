@@ -1,5 +1,5 @@
-const { addUser, removeUser, getGuildUsers, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs } = require('./configManager');
-const { enhancedCheck } = require('./apiUtils');
+const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs } = require('./configManager');
+const { enhancedCheck, getUserCalendar } = require('./apiUtils');
 const { updateGuildCronJobs } = require('./scheduledTasks');
 const logger = require('./logger');
 
@@ -36,6 +36,9 @@ async function handleInteraction(interaction) {
                 break;
             case 'managecron':
                 await handleManageCron(interaction);
+                break;
+            case 'leetstats':
+                await handleLeetStats(interaction);
                 break;
             case 'botinfo':
                 await handleBotInfo(interaction);
@@ -226,6 +229,209 @@ async function handleManageCron(interaction) {
     }
 }
 
+async function handleLeetStats(interaction) {
+    await interaction.deferReply();
+
+    const showAll = interaction.options.getBoolean('show_all') || false;
+    const guildUsers = await getGuildUsers(interaction.guildId);
+
+    if (Object.keys(guildUsers).length === 0) {
+        await interaction.editReply('No users are being tracked in this server. Use `/adduser` to start tracking!');
+        return;
+    }
+
+    const guild = await getGuildConfig(interaction.guildId);
+
+    if (showAll) {
+        // Show stats for all registered members
+        const statsFields = [];
+
+        for (const [username, discordId] of Object.entries(guildUsers)) {
+            const userStats = guild.userStats?.get(username);
+
+            if (userStats) {
+                const displayName = discordId ? `<@${discordId}>` : username;
+                statsFields.push({
+                    name: `${username}`,
+                    value: `👤 ${displayName}\n` +
+                        `🔥 Streak: **${userStats.streak}** days\n` +
+                        `📅 Total Active Days: **${userStats.totalActiveDays}**\n` +
+                        `📆 Active Years: ${userStats.activeYears.length > 0 ? userStats.activeYears.join(', ') : 'N/A'}\n` +
+                        `🕐 Last Updated: ${userStats.lastUpdated ? new Date(userStats.lastUpdated).toLocaleDateString() : 'Never'}`,
+                    inline: true
+                });
+            } else {
+                const displayName = discordId ? `<@${discordId}>` : username;
+                statsFields.push({
+                    name: `${username}`,
+                    value: `👤 ${displayName}\n📊 Stats not yet fetched`,
+                    inline: true
+                });
+            }
+        }
+
+        const statsEmbed = {
+            color: 0xFFA500,
+            title: '📊 Server LeetCode Statistics',
+            description: `Showing stats for all ${statsFields.length} tracked members`,
+            fields: statsFields,
+            footer: {
+                text: 'Use /leetstats without options to see your personal stats'
+            },
+            timestamp: new Date()
+        };
+
+        await interaction.editReply({ embeds: [statsEmbed] });
+    } else {
+        // Show stats for the user running the command
+        const userEntry = Object.entries(guildUsers).find(([leetcode, discordId]) =>
+            discordId === interaction.user.id
+        );
+
+        if (!userEntry) {
+            // User not registered - show server stats and reminder
+            const totalUsers = Object.keys(guildUsers).length;
+            let totalStreak = 0;
+            let totalActiveDays = 0;
+            let usersWithStats = 0;
+
+            for (const username of Object.keys(guildUsers)) {
+                const userStats = guild.userStats?.get(username);
+                if (userStats) {
+                    totalStreak += userStats.streak || 0;
+                    totalActiveDays += userStats.totalActiveDays || 0;
+                    usersWithStats++;
+                }
+            }
+
+            const avgStreak = usersWithStats > 0 ? (totalStreak / usersWithStats).toFixed(1) : 0;
+            const avgActiveDays = usersWithStats > 0 ? (totalActiveDays / usersWithStats).toFixed(0) : 0;
+
+            const serverStatsEmbed = {
+                color: 0xFF6B6B,
+                title: '⚠️ You are not registered!',
+                description: `You're not in the tracking list yet. Use \`/adduser ${interaction.user.username}\` to start tracking your progress!\n\nHere are the server statistics:`,
+                fields: [
+                    {
+                        name: '👥 Total Tracked Users',
+                        value: `**${totalUsers}**`,
+                        inline: true
+                    },
+                    {
+                        name: '🔥 Average Streak',
+                        value: `**${avgStreak}** days`,
+                        inline: true
+                    },
+                    {
+                        name: '📅 Average Active Days',
+                        value: `**${avgActiveDays}** days`,
+                        inline: true
+                    }
+                ],
+                footer: {
+                    text: 'Join the tracking list to see your personal stats!'
+                },
+                timestamp: new Date()
+            };
+
+            await interaction.editReply({ embeds: [serverStatsEmbed] });
+            return;
+        }
+
+        // User is registered - show their personal stats
+        const [username] = userEntry;
+        const userStats = guild.userStats?.get(username);
+
+        if (!userStats) {
+            await interaction.editReply(`Your stats are being fetched for the first time. Please try again in a moment!`);
+            return;
+        }
+
+        // Fetch fresh calendar data
+        try {
+            const calendarData = await getUserCalendar(username);
+
+            const personalStatsEmbed = {
+                color: 0x00D9FF,
+                title: `📊 LeetCode Statistics for ${username}`,
+                description: `Personal stats for <@${interaction.user.id}>`,
+                fields: [
+                    {
+                        name: '🔥 Current Streak',
+                        value: `**${calendarData.streak || 0}** days`,
+                        inline: true
+                    },
+                    {
+                        name: '📅 Total Active Days',
+                        value: `**${calendarData.totalActiveDays || 0}** days`,
+                        inline: true
+                    },
+                    {
+                        name: '📆 Active Years',
+                        value: calendarData.activeYears && calendarData.activeYears.length > 0
+                            ? calendarData.activeYears.join(', ')
+                            : 'N/A',
+                        inline: true
+                    },
+                    {
+                        name: '🏆 DCC Badges',
+                        value: calendarData.dccBadges && calendarData.dccBadges.length > 0
+                            ? `${calendarData.dccBadges.length} badges`
+                            : 'No badges yet',
+                        inline: true
+                    }
+                ],
+                footer: {
+                    text: 'Use /leetstats show_all:true to see server-wide stats'
+                },
+                timestamp: new Date()
+            };
+
+            await interaction.editReply({ embeds: [personalStatsEmbed] });
+        } catch (error) {
+            logger.error(`Error fetching calendar data for ${username}:`, error);
+
+            const fallbackEmbed = {
+                color: 0xFFA500,
+                title: `📊 LeetCode Statistics for ${username}`,
+                description: `Personal stats for <@${interaction.user.id}> (from cache)`,
+                fields: [
+                    {
+                        name: '🔥 Current Streak',
+                        value: `**${userStats.streak || 0}** days`,
+                        inline: true
+                    },
+                    {
+                        name: '📅 Total Active Days',
+                        value: `**${userStats.totalActiveDays || 0}** days`,
+                        inline: true
+                    },
+                    {
+                        name: '📆 Active Years',
+                        value: userStats.activeYears && userStats.activeYears.length > 0
+                            ? userStats.activeYears.join(', ')
+                            : 'N/A',
+                        inline: true
+                    },
+                    {
+                        name: '🕐 Last Updated',
+                        value: userStats.lastUpdated
+                            ? new Date(userStats.lastUpdated).toLocaleString()
+                            : 'Never',
+                        inline: true
+                    }
+                ],
+                footer: {
+                    text: 'Could not fetch fresh data - showing cached stats'
+                },
+                timestamp: new Date()
+            };
+
+            await interaction.editReply({ embeds: [fallbackEmbed] });
+        }
+    }
+}
+
 async function handleBotInfo(interaction) {
     const botInfoEmbed = {
         color: 0x00ff00,
@@ -277,7 +483,7 @@ async function handleHelp(interaction) {
             },
             {
                 name: '🔍 Monitoring Commands',
-                value: '**`/check`**\n└ Manually trigger a check of today\'s LeetCode challenge\n└ Checks all tracked users and posts results to the announcement channel',
+                value: '**`/check`**\n└ Manually trigger a check of today\'s LeetCode challenge\n└ Checks all tracked users and posts results to the announcement channel\n\n**`/leetstats [show_all]`**\n└ View LeetCode statistics (streak, active days, etc.)\n└ Default: Shows your personal stats if registered\n└ `show_all:true` - Shows stats for all tracked members\n└ Example: `/leetstats` or `/leetstats show_all:true`',
                 inline: false
             },
             {

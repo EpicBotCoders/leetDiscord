@@ -7,7 +7,7 @@ const { registerCommands } = require('./modules/commandRegistration');
 const { loadConfig } = require('./modules/configManager');
 const { connectDB } = require('./modules/models/db');
 const logger = require('./modules/logger');
-const { initializeScheduledTasks } = require('./modules/scheduledTasks');
+const { initializeScheduledTasks, stopAllCronJobs } = require('./modules/scheduledTasks');
 
 async function sendWelcomeMessage(guild) {
     try {
@@ -49,12 +49,14 @@ async function sendWelcomeMessage(guild) {
 }
 
 async function main() {
+    let client = null;
+
     try {
         // Connect to MongoDB first
         await connectDB();
 
         const config = await loadConfig();
-        const client = new Client({
+        client = new Client({
             intents: [
                 GatewayIntentBits.Guilds,
                 GatewayIntentBits.GuildMessages,
@@ -84,10 +86,73 @@ async function main() {
         });
 
         await client.login(config.token);
+
+        // Setup graceful shutdown handlers
+        setupGracefulShutdown(client);
     } catch (error) {
         logger.error('Failed to start the bot:', error);
         process.exit(1);
     }
+}
+
+function setupGracefulShutdown(client) {
+    let isShuttingDown = false;
+
+    const shutdown = async (signal) => {
+        if (isShuttingDown) {
+            logger.warn('Shutdown already in progress...');
+            return;
+        }
+
+        isShuttingDown = true;
+        logger.info(`\n${signal} received. Starting graceful shutdown...`);
+
+        try {
+            // Give ongoing operations a chance to complete
+            logger.info('Waiting for ongoing operations to complete...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Stop all scheduled cron jobs
+            logger.info('Stopping scheduled tasks...');
+            stopAllCronJobs();
+
+            // Disconnect Discord client
+            if (client) {
+                logger.info('Disconnecting from Discord...');
+                await client.destroy();
+                logger.info('Discord client disconnected');
+            }
+
+            // Close MongoDB connection
+            const mongoose = require('mongoose');
+            if (mongoose.connection.readyState !== 0) {
+                logger.info('Closing MongoDB connection...');
+                await mongoose.connection.close();
+                logger.info('MongoDB connection closed');
+            }
+
+            logger.info('Graceful shutdown complete');
+            process.exit(0);
+        } catch (error) {
+            logger.error('Error during graceful shutdown:', error);
+            process.exit(1);
+        }
+    };
+
+    // Handle termination signals
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+    // Handle uncaught exceptions and rejections
+    process.on('uncaughtException', (error) => {
+        logger.error('Uncaught Exception:', error);
+        shutdown('uncaughtException');
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+        logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+        shutdown('unhandledRejection');
+    });
 }
 
 main();
