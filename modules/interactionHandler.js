@@ -101,7 +101,7 @@ async function handleTelegram(interaction) {
 
             if (targetUsername) {
                 const telegramUser = await getTelegramUser(interaction.guildId, targetUsername);
-                if (telegramUser && telegramUser.chatId) {
+                if (telegramUser && telegramUser.telegramChatId) {
                     await interaction.editReply({
                         content: `✅ You are already connected to Telegram as **${targetUsername}**.\nTo check your status, use the \`/telegram status\` command.`,
                         ephemeral: true
@@ -455,7 +455,7 @@ async function handleLeetStats(interaction) {
         const userStats = guild.userStats?.get(username);
 
         if (!userStats) {
-            await interaction.editReply(`Your stats are being fetched for the first time. Please try again in a moment!`);
+            await interaction.editReply('Your stats are being fetched for the first time. Please try again in a moment!');
             return;
         }
 

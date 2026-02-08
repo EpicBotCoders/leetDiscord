@@ -160,7 +160,7 @@ function parseSubmissionTime(submission) {
 // Enhanced check function with caching and recording
 async function enhancedCheck(users, client, channelId) {
     logger.info('Starting enhanced check for users:', users);
-    logger.debug("Cache state:", cache);
+    logger.debug('Cache state:', cache);
     try {
         const dailySlug = await getDailySlug();
         const problem = await getProblemDetails(dailySlug);

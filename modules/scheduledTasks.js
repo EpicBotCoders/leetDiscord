@@ -72,6 +72,8 @@ async function scheduleDailyCheck(client, guildId, channelId, schedule) {
 
     const job = cron.schedule(schedule, async () => {
         await performDailyCheck(client, guildId, channelId);
+    }, {
+        timezone: 'Asia/Kolkata'
     });
 
     activeCronJobs.set(jobKey, job);
@@ -238,18 +240,18 @@ async function performDailyCheck(client, guildId, channelId) {
                     } catch (dmError) {
                         logger.error('Failed to notify guild owner about permissions:', dmError);
                     }
-                    return `Check failed: Permission error sending message.`;
+                    return 'Check failed: Permission error sending message.';
                 } else {
                     logger.error(`Error sending message in channel ${channel.name} (${channel.id}):`, sendError);
-                    return `Check failed: Error sending message.`;
+                    return 'Check failed: Error sending message.';
                 }
             }
         } else {
-            return `Check complete. All tracked users have completed the daily challenge!`;
+            return 'Check complete. All tracked users have completed the daily challenge!';
         }
     } catch (error) {
         logger.error('Error in scheduled task:', error);
-        return `Check failed: Internal error.`;
+        return 'Check failed: Internal error.';
     }
 }
 
@@ -316,7 +318,7 @@ async function scheduleSilentDailyCheck(client) {
         await performSilentCheck(client);
         logger.info('Silent daily check completed.');
     }, {
-        timezone: "UTC"
+        timezone: 'UTC'
     });
 
     activeCronJobs.set(jobKey, job);

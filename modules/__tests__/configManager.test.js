@@ -44,7 +44,7 @@ describe('configManager', () => {
                     'leetcoder2': null
                 },
                 cronJobs: [
-                    { schedule: "0 10 * * *", task: "runCheck" }
+                    { schedule: '0 10 * * *', task: 'runCheck' }
                 ]
             }
         }

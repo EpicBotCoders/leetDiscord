@@ -1,6 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const logger = require('./logger');
 const { linkTelegramChat, getConnectionByChatId } = require('./configManager');
+const { getUserCalendar } = require('./apiUtils');
 require('dotenv').config();
 
 let bot = null;
@@ -63,11 +64,30 @@ async function startTelegramBot() {
                 }
             } else if (text === '/leetstatus') {
                 const connection = await getConnectionByChatId(chatId);
-                if (connection) {
-                    // TODO: enhanced stats lookup across guilds
-                    bot.sendMessage(chatId, `📊 LeetCode Stats for ${connection.username}\n\nPlease check the Discord server for your detailed statistics.`);
-                } else {
-                    bot.sendMessage(chatId, '❌ Not connected.');
+                if (!connection) {
+                    bot.sendMessage(chatId, '❌ Not connected. Use /telegram connect in Discord to link your account first.');
+                    return;
+                }
+
+                try {
+                    // Fetch user's calendar data
+                    const calendarData = await getUserCalendar(connection.username);
+
+                    if (!calendarData) {
+                        bot.sendMessage(chatId, '❌ Could not fetch your LeetCode statistics. Please try again later.');
+                        return;
+                    }
+
+                    const statsMessage = `📊 **LeetCode Stats for ${connection.username}**\n\n` +
+                        `🔥 Current Streak: ${calendarData.streak || 0} days\n` +
+                        `✅ Total Active Days: ${calendarData.totalActiveDays || 0}\n` +
+                        `📅 Active Years: ${calendarData.activeYears?.join(', ') || 'N/A'}\n\n` +
+                        'Keep up the great work! 💪';
+
+                    bot.sendMessage(chatId, statsMessage, { parse_mode: 'Markdown' });
+                } catch (error) {
+                    logger.error(`Error fetching stats for ${connection.username}:`, error);
+                    bot.sendMessage(chatId, '❌ An error occurred while fetching your statistics. Please try again later.');
                 }
             }
         });

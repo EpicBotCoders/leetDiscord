@@ -23,8 +23,8 @@ async function migrateToMongoDB() {
                     channelId: guildData.channelId,
                     users: guildData.users || {},
                     cronJobs: guildData.cronJobs || [
-                        { schedule: "0 10 * * *", task: "runCheck" },
-                        { schedule: "0 18 * * *", task: "runCheck" }
+                        { schedule: '0 10 * * *', task: 'runCheck' },
+                        { schedule: '0 18 * * *', task: 'runCheck' }
                     ]
                 },
                 { upsert: true, new: true }

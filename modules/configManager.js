@@ -20,8 +20,8 @@ async function initializeGuildConfig(guildId, channelId) {
             channelId,
             users: {},
             cronJobs: [
-                { schedule: "0 10 * * *", task: "runCheck" },
-                { schedule: "0 18 * * *", task: "runCheck" }
+                { schedule: '0 10 * * *', task: 'runCheck' },
+                { schedule: '0 18 * * *', task: 'runCheck' }
             ]
         });
     }
@@ -90,7 +90,7 @@ async function removeUser(guildId, username) {
     const guild = await Guild.findOne({ guildId });
     if (!guild) {
         logger.error(`[removeUser] Guild ${guildId} not found in database`);
-        return `Guild not configured.`;
+        return 'Guild not configured.';
     }
 
     logger.debug(`[removeUser] Found guild. Current users: ${JSON.stringify(Object.fromEntries(guild.users))}`);
@@ -138,7 +138,7 @@ async function updateGuildChannel(guildId, channelId) {
 
     guild.channelId = channelId;
     await guild.save();
-    return `Updated announcement channel for this server.`;
+    return 'Updated announcement channel for this server.';
 }
 
 async function addCronJob(guildId, hours, minutes) {
@@ -315,6 +315,18 @@ async function linkTelegramChat(token, chatId) {
     if (new Date() > user.tokenExpires) {
         logger.warn(`[linkTelegramChat] Token expired for ${user.leetcodeUsername}`);
         return { success: false, message: 'Link token has expired. Please generate a new one.' };
+    }
+
+    // Check if already connected
+    if (user.telegramChatId) {
+        if (user.telegramChatId === chatId.toString()) {
+            return { success: true, message: '✅ You are already connected!' };
+        } else {
+            return {
+                success: false,
+                message: '⚠️ This account is already linked to another Telegram chat. Please unlink it first or contact support.'
+            };
+        }
     }
 
     user.telegramChatId = chatId;
