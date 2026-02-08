@@ -4,9 +4,115 @@ const { enhancedCheck, getUserCalendar } = require('./apiUtils');
 const { updateGuildCronJobs, performDailyCheck } = require('./scheduledTasks');
 const logger = require('./logger');
 const { v4: uuidv4 } = require('uuid');
+const { ChannelType } = require('discord.js');
+
+async function handleAutocomplete(interaction) {
+    const { commandName, guildId } = interaction;
+
+    if (!guildId) {
+        await interaction.respond([]);
+        return;
+    }
+
+    try {
+        switch (commandName) {
+            case 'removeuser':
+                await handleUsernameAutocomplete(interaction);
+                break;
+            case 'managecron':
+                await handleCronAutocomplete(interaction);
+                break;
+            default:
+                await interaction.respond([]);
+        }
+    } catch (error) {
+        logger.error(`Error handling autocomplete for ${commandName}:`, error);
+        await interaction.respond([]);
+    }
+}
+
+async function handleUsernameAutocomplete(interaction) {
+    const focusedValue = interaction.options.getFocused().toLowerCase();
+
+    try {
+        const users = await getGuildUsers(interaction.guildId);
+        const usernames = Object.keys(users);
+
+        // Filter usernames based on user input
+        const filtered = usernames
+            .filter(username => username.toLowerCase().includes(focusedValue))
+            .slice(0, 25) // Discord limits to 25 choices
+            .map(username => ({
+                name: username,
+                value: username
+            }));
+
+        await interaction.respond(filtered);
+    } catch (error) {
+        logger.error('Error fetching usernames for autocomplete:', error);
+        await interaction.respond([]);
+    }
+}
+
+async function handleCronAutocomplete(interaction) {
+    const subcommand = interaction.options.getSubcommand();
+
+    // Only provide autocomplete for 'remove' subcommand
+    if (subcommand !== 'remove') {
+        await interaction.respond([]);
+        return;
+    }
+
+    const focusedValue = interaction.options.getFocused();
+
+    try {
+        const cronJobs = await listCronJobs(interaction.guildId);
+
+        if (cronJobs.length === 0) {
+            await interaction.respond([]);
+            return;
+        }
+
+        // Parse existing cron schedules and format for display
+        const times = cronJobs
+            .map(job => {
+                // Cron format: "minute hour * * *"
+                const parts = job.split(' ');
+
+                // Validate that we have at least minute and hour parts
+                if (!parts[0] || !parts[1]) {
+                    logger.warn(`Invalid cron job format: ${job}`);
+                    return null;
+                }
+
+                const display = `${parts[1].padStart(2, '0')}:${parts[0].padStart(2, '0')} UTC`;
+                return {
+                    name: display,
+                    value: `${parts[1]}:${parts[0]}` // Store as "hour:minute"
+                };
+            })
+            .filter(time => time !== null); // Remove invalid entries
+
+        // Filter based on user input
+        const filtered = times
+            .filter(time => time.name.toLowerCase().includes(focusedValue.toLowerCase()))
+            .slice(0, 25);
+
+        await interaction.respond(filtered);
+    } catch (error) {
+        logger.error('Error fetching cron times for autocomplete:', error);
+        await interaction.respond([]);
+    }
+}
 
 async function handleInteraction(interaction) {
     logger.info(`Interaction received: ${interaction.commandName}`);
+
+    // Handle autocomplete interactions
+    if (interaction.isAutocomplete()) {
+        await handleAutocomplete(interaction);
+        return;
+    }
 
     if (!interaction.isCommand()) {
         logger.info('Interaction is not a command. Ignoring.');
@@ -266,7 +372,9 @@ async function handleSetChannel(interaction) {
     }
 
     const channel = interaction.options.getChannel('channel');
-    if (!channel || !channel.isTextBased()) {
+    // Check if channel is a text-based channel (GuildText, GuildNews, etc.)
+    const validChannelTypes = [ChannelType.GuildText, ChannelType.GuildNews, ChannelType.GuildAnnouncement];
+    if (!channel || !validChannelTypes.includes(channel.type)) {
         await interaction.reply('Please specify a valid text channel.');
         return;
     }
@@ -321,8 +429,19 @@ async function handleManageCron(interaction) {
             break;
         }
         case 'remove': {
-            const hours = interaction.options.getInteger('hours');
-            const minutes = interaction.options.getInteger('minutes');
+            const timeValue = interaction.options.getString('time');
+
+            // Parse the time value (format: "hour:minute")
+            const [hourStr, minuteStr] = timeValue.split(':');
+            const hours = parseInt(hourStr, 10);
+            const minutes = parseInt(minuteStr, 10);
+
+            // Validate parsed values
+            if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+                await interaction.reply('Invalid time format. Please select a valid time from the dropdown.');
+                break;
+            }
+
             result = await removeCronJob(interaction.guildId, hours, minutes);
             await interaction.reply(result);
             // Update cron jobs after removing
@@ -330,11 +449,16 @@ async function handleManageCron(interaction) {
             break;
         }
         case 'list': {
-            const times = await listCronJobs(interaction.guildId);
-            if (times.length === 0) {
+            const cronSchedules = await listCronJobs(interaction.guildId);
+            if (cronSchedules.length === 0) {
                 await interaction.reply('No scheduled check times configured.');
             } else {
-                await interaction.reply(`Scheduled check times:\n${times.join('\n')}`);
+                // Format cron schedules to readable time format
+                const formattedTimes = cronSchedules.map(schedule => {
+                    const [minutes, hours] = schedule.split(' ');
+                    return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')} UTC`;
+                });
+                await interaction.reply(`Scheduled check times:\n${formattedTimes.join('\n')}`);
             }
             break;
         }

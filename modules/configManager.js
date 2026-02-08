@@ -194,10 +194,7 @@ async function listCronJobs(guildId) {
 
     return guild.cronJobs
         .filter(job => job.task === 'runCheck')
-        .map(job => {
-            const [minutes, hours] = job.schedule.split(' ');
-            return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`;
-        })
+        .map(job => job.schedule)
         .sort();
 }
 

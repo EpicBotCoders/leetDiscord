@@ -31,7 +31,8 @@ const commandDefinitions = [
             .addStringOption(option =>
                 option.setName('username')
                     .setDescription('The LeetCode username to remove')
-                    .setRequired(true))
+                    .setRequired(true)
+                    .setAutocomplete(true))
     },
     {
         category: 'User Management',
@@ -74,18 +75,11 @@ const commandDefinitions = [
                 subcommand
                     .setName('remove')
                     .setDescription('Remove an existing check time')
-                    .addIntegerOption(option =>
-                        option.setName('hours')
-                            .setDescription('Hour in 24H format (0-23)')
+                    .addStringOption(option =>
+                        option.setName('time')
+                            .setDescription('Select a scheduled time to remove')
                             .setRequired(true)
-                            .setMinValue(0)
-                            .setMaxValue(23))
-                    .addIntegerOption(option =>
-                        option.setName('minutes')
-                            .setDescription('Minutes (0-59)')
-                            .setRequired(true)
-                            .setMinValue(0)
-                            .setMaxValue(59)))
+                            .setAutocomplete(true)))
             .addSubcommand(subcommand =>
                 subcommand
                     .setName('list')
