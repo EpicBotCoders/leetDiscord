@@ -8,7 +8,7 @@ const { loadConfig } = require('./modules/configManager');
 const { connectDB } = require('./modules/models/db');
 const logger = require('./modules/logger');
 const { initializeScheduledTasks, stopAllCronJobs } = require('./modules/scheduledTasks');
-const { startTelegramBot } = require('./modules/telegramBot');
+const { startTelegramBot, stopTelegramBot } = require('./modules/telegramBot');
 const http = require('http');
 
 async function sendWelcomeMessage(guild) {
@@ -137,6 +137,9 @@ function setupGracefulShutdown(client, server) {
             // Stop all scheduled cron jobs
             logger.info('Stopping scheduled tasks...');
             stopAllCronJobs();
+
+            // Stop Telegram Bot
+            await stopTelegramBot();
 
             // Disconnect Discord client
             if (client) {

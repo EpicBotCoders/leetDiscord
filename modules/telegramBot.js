@@ -117,7 +117,17 @@ async function sendTelegramMessage(chatId, message) {
     }
 }
 
+async function stopTelegramBot() {
+    if (bot) {
+        logger.info('Stopping Telegram Bot polling...');
+        await bot.stopPolling();
+        logger.info('Telegram Bot stopped');
+        bot = null;
+    }
+}
+
 module.exports = {
     startTelegramBot,
+    stopTelegramBot,
     sendTelegramMessage
 };
