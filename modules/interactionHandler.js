@@ -673,11 +673,19 @@ async function handleLeetStats(interaction) {
 }
 
 async function handleBotInfo(interaction) {
+    const clientId = interaction.client.user.id;
+    const permissions = 19456; // View Channels, Send Messages, Embed Links, Attach Files, Read Message History
+    const inviteLink = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&permissions=${permissions}&scope=bot%20applications.commands`;
+
     const botInfoEmbed = {
         color: 0x00ff00,
         title: '📚 LeetCode Discord Bot Info',
         description: 'I help track LeetCode activity for your server members. You can find my source code and contribute at:\nhttps://github.com/mochiron-desu/leetDiscord',
         fields: [
+            {
+                name: '🔗 Invite Me',
+                value: `[Click here to add the bot to your server](${inviteLink})`
+            },
             {
                 name: '🎯 Purpose',
                 value: 'Track and encourage daily LeetCode challenge completion within your Discord community'
