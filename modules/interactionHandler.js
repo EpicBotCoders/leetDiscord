@@ -1,6 +1,6 @@
 const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs, setTelegramToken, toggleTelegramUpdates, getTelegramUser } = require('./configManager');
 const { commandDefinitions } = require('./commandRegistration');
-const { enhancedCheck, getUserCalendar } = require('./apiUtils');
+const { enhancedCheck, getUserCalendar, getBestDailySubmission, getDailySlug } = require('./apiUtils');
 const { updateGuildCronJobs, performDailyCheck } = require('./scheduledTasks');
 const logger = require('./logger');
 const { v4: uuidv4 } = require('uuid');
@@ -17,6 +17,7 @@ async function handleAutocomplete(interaction) {
     try {
         switch (commandName) {
             case 'removeuser':
+            case 'daily':
                 await handleUsernameAutocomplete(interaction);
                 break;
             case 'managecron':
@@ -156,6 +157,9 @@ async function handleInteraction(interaction) {
                 break;
             case 'telegram':
                 await handleTelegram(interaction);
+                break;
+            case 'daily':
+                await handleDaily(interaction);
                 break;
             case 'forcecheck':
                 await handleForceCheck(interaction);
@@ -769,6 +773,137 @@ async function handleForceCheck(interaction) {
     } catch (error) {
         logger.error('Error in forcecheck:', error);
         await interaction.editReply('An error occurred while performing the check.');
+    }
+}
+
+async function handleDaily(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const usernameOption = interaction.options.getString('username');
+        const guildUsers = await getGuildUsers(interaction.guildId);
+        let targetUsername = null;
+
+        // If username provided, use it; otherwise resolve from Discord ID
+        if (usernameOption) {
+            // Check if username exists in guild
+            if (guildUsers[usernameOption]) {
+                targetUsername = usernameOption;
+            } else {
+                await interaction.editReply(`❌ User **${usernameOption}** is not tracked in this server.`);
+                return;
+            }
+        } else {
+            // Find username from Discord ID
+            const userEntry = Object.entries(guildUsers).find(([leetcode, discordId]) =>
+                discordId === interaction.user.id
+            );
+
+            if (!userEntry) {
+                await interaction.editReply('❌ You are not registered in this server. Use `/adduser` to start tracking your LeetCode progress!');
+                return;
+            }
+
+            targetUsername = userEntry[0];
+        }
+
+        // Fetch today's daily challenge
+        const dailySlug = await getDailySlug();
+        if (!dailySlug) {
+            await interaction.editReply('❌ Failed to fetch today\'s daily challenge. Please try again later.');
+            return;
+        }
+
+        // Fetch problem details
+        const axios = require('axios');
+        const problemDetails = await axios.get(`https://leetcode-api-pied.vercel.app/problem/${dailySlug}`);
+        const problem = problemDetails.data;
+
+        // Fetch best submission
+        const bestSubmission = await getBestDailySubmission(targetUsername, dailySlug);
+
+        if (!bestSubmission) {
+            const embed = {
+                color: 0xff6b6b,
+                title: '❌ No Submission Found',
+                description: `**${targetUsername}** has not completed today's daily challenge yet.`,
+                fields: [
+                    {
+                        name: '📌 Today\'s Problem',
+                        value: `**${problem.title}**\n[View Problem](https://leetcode.com/problems/${dailySlug}/)`
+                    }
+                ],
+                timestamp: new Date()
+            };
+
+            await interaction.editReply({ embeds: [embed] });
+            return;
+        }
+
+        // Create success embed
+        const submissionUrl = `https://leetcode.com${bestSubmission.url}`;
+        const mention = guildUsers[targetUsername] ? `<@${guildUsers[targetUsername]}>` : targetUsername;
+
+        const embed = {
+            color: 0x00d9ff,
+            title: '🧠 Daily Challenge Completed',
+            description: `Submission details for **${targetUsername}**`,
+            fields: [
+                {
+                    name: '📌 Problem',
+                    value: `**${problem.title}**\n[View Problem](https://leetcode.com/problems/${dailySlug}/)`,
+                    inline: false
+                },
+                {
+                    name: '🔗 Submission',
+                    value: `[View Submission](${submissionUrl})`,
+                    inline: true
+                },
+                {
+                    name: '💻 Language',
+                    value: bestSubmission.langName,
+                    inline: true
+                },
+                {
+                    name: '\u200b',
+                    value: '\u200b',
+                    inline: true
+                },
+                {
+                    name: '⚡ Runtime',
+                    value: bestSubmission.runtime,
+                    inline: true
+                },
+                {
+                    name: '🧠 Memory',
+                    value: bestSubmission.memory,
+                    inline: true
+                },
+                {
+                    name: '\u200b',
+                    value: '\u200b',
+                    inline: true
+                }
+            ],
+            footer: {
+                text: `Requested by ${interaction.user.username}`
+            },
+            timestamp: new Date()
+        };
+
+        // Add notes if they exist
+        if (bestSubmission.hasNotes && bestSubmission.notes) {
+            embed.fields.push({
+                name: '📝 Notes',
+                value: bestSubmission.notes,
+                inline: false
+            });
+        }
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        logger.error('Error in handleDaily:', error);
+        await interaction.editReply('❌ An error occurred while fetching submission data. Please try again later.');
     }
 }
 
