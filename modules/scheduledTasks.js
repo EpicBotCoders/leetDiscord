@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const { getUserSubmissions, getDailySlug } = require('./apiUtils');
+const { getUserSubmissions, getDailySlug, getBestDailySubmission, parseDuration, parseMemory } = require('./apiUtils');
 const { updateUserStats, getGuildConfig } = require('./configManager');
 const { sendTelegramMessage } = require('./telegramBot');
 const { PermissionsBitField } = require('discord.js');
@@ -351,6 +351,9 @@ async function performSilentCheck(client) {
             const users = Object.fromEntries(guild.users);
             if (Object.keys(users).length === 0) continue;
 
+            // Collect submissions for this guild
+            const submissionsData = [];
+
             for (const [username, discordId] of Object.entries(users)) {
                 try {
                     // Update calendar stats for this user
@@ -398,15 +401,102 @@ async function performSilentCheck(client) {
                                 });
                                 logger.info(`Silent check: Recorded submission for ${username} in guild ${guild.guildId}`);
                             }
+
+                            // Fetch best submission for report
+                            const bestSubmission = await getBestDailySubmission(username, dailySlug);
+                            if (bestSubmission) {
+                                submissionsData.push({
+                                    username,
+                                    discordId,
+                                    submission: bestSubmission
+                                });
+                            }
                         }
                     }
                 } catch (userError) {
                     logger.error(`Error processing user ${username} during silent check:`, userError);
                 }
             }
+
+            // Post submission report if there are any submissions
+            if (submissionsData.length > 0) {
+                try {
+                    await postSubmissionReport(client, guild, problem, submissionsData);
+                } catch (reportError) {
+                    logger.error(`Error posting submission report for guild ${guild.guildId}:`, reportError);
+                }
+            }
         }
     } catch (error) {
         logger.error('Error in silent daily check:', error);
+    }
+}
+
+// Helper function to format and post submission report
+async function postSubmissionReport(client, guild, problem, submissionsData) {
+    try {
+        const channel = await client.channels.fetch(guild.channelId);
+        if (!channel) {
+            logger.warn(`Channel ${guild.channelId} not found for guild ${guild.guildId}`);
+            return;
+        }
+
+        // Check permissions
+        const botMember = await channel.guild.members.fetchMe();
+        const permissions = channel.permissionsFor(botMember);
+        if (!permissions?.has(PermissionsBitField.Flags.SendMessages)) {
+            logger.warn(`No permission to send messages in channel ${channel.id} for guild ${guild.guildId}`);
+            return;
+        }
+
+        // Sort submissions by runtime, then memory
+        const sortedSubmissions = submissionsData.sort((a, b) => {
+            const runtimeA = parseDuration(a.submission.runtime);
+            const runtimeB = parseDuration(b.submission.runtime);
+
+            if (runtimeA !== runtimeB) {
+                return runtimeA - runtimeB;
+            }
+
+            const memoryA = parseMemory(a.submission.memory);
+            const memoryB = parseMemory(b.submission.memory);
+            return memoryA - memoryB;
+        });
+
+        // Build embed fields
+        const medals = ['🥇', '🥈', '🥉'];
+        const fields = sortedSubmissions.map((data, index) => {
+            const medal = index < 3 ? medals[index] : '';
+            const mention = data.discordId ? `<@${data.discordId}>` : data.username;
+            const submissionUrl = `https://leetcode.com${data.submission.url}`;
+
+            return {
+                name: `**${index + 1}. ${data.username}** ${medal}`,
+                value: `👤 ${mention}\n` +
+                    `🔗 [View Submission](${submissionUrl})\n` +
+                    `💻 ${data.submission.langName}\n` +
+                    `⚡ Runtime: ${data.submission.runtime}\n` +
+                    `🧠 Memory: ${data.submission.memory}`,
+                inline: true
+            };
+        });
+
+        const embed = {
+            color: 0x00d9ff,
+            title: `🏆 Daily Challenge Submissions`,
+            description: `**${problem.title}**\n\n**Ranked by Runtime**`,
+            fields: fields,
+            footer: {
+                text: `${submissionsData.length} user${submissionsData.length > 1 ? 's' : ''} completed today's challenge`
+            },
+            timestamp: new Date()
+        };
+
+        await channel.send({ embeds: [embed] });
+        logger.info(`Posted submission report for guild ${guild.guildId} with ${submissionsData.length} submissions`);
+    } catch (error) {
+        logger.error('Error in postSubmissionReport:', error);
+        throw error;
     }
 }
 

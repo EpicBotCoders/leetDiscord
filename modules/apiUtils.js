@@ -257,4 +257,76 @@ async function enhancedCheck(users, client, channelId) {
     }
 }
 
-module.exports = { getDailySlug, getUserSubmissions, getUserCalendar, checkUser, enhancedCheck };
+// Helper function to parse runtime strings like "1293 ms" into numeric milliseconds
+function parseDuration(durationString) {
+    if (!durationString) return Infinity;
+
+    const match = durationString.match(/(\d+(?:\.\d+)?)\s*ms/i);
+    if (match) {
+        return parseFloat(match[1]);
+    }
+
+    logger.warn(`Could not parse duration: ${durationString}`);
+    return Infinity;
+}
+
+// Helper function to parse memory strings like "19.6 MB" into numeric megabytes
+function parseMemory(memoryString) {
+    if (!memoryString) return Infinity;
+
+    const match = memoryString.match(/(\d+(?:\.\d+)?)\s*MB/i);
+    if (match) {
+        return parseFloat(match[1]);
+    }
+
+    logger.warn(`Could not parse memory: ${memoryString}`);
+    return Infinity;
+}
+
+// Get best accepted submission for today's daily challenge
+async function getBestDailySubmission(username, dailySlug) {
+    try {
+        const submissions = await getUserSubmissions(username);
+
+        // Filter for accepted submissions matching today's daily challenge
+        const acceptedSubmissions = submissions.filter(sub =>
+            sub.titleSlug === dailySlug &&
+            sub.statusDisplay === 'Accepted'
+        );
+
+        if (acceptedSubmissions.length === 0) {
+            return null;
+        }
+
+        // Sort by runtime (primary), then memory (secondary)
+        const sorted = acceptedSubmissions.sort((a, b) => {
+            const runtimeA = parseDuration(a.runtime);
+            const runtimeB = parseDuration(b.runtime);
+
+            if (runtimeA !== runtimeB) {
+                return runtimeA - runtimeB;
+            }
+
+            // If runtime is tied, compare memory
+            const memoryA = parseMemory(a.memory);
+            const memoryB = parseMemory(b.memory);
+            return memoryA - memoryB;
+        });
+
+        return sorted[0];
+    } catch (error) {
+        logger.error(`Error fetching best submission for ${username}:`, error);
+        return null;
+    }
+}
+
+module.exports = {
+    getDailySlug,
+    getUserSubmissions,
+    getUserCalendar,
+    checkUser,
+    enhancedCheck,
+    getBestDailySubmission,
+    parseDuration,
+    parseMemory
+};

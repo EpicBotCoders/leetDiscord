@@ -126,6 +126,17 @@ const commandDefinitions = [
                     .setDescription('Check your Telegram connection status'))
     },
     {
+        category: 'Monitoring',
+        data: new SlashCommandBuilder()
+            .setName('daily')
+            .setDescription('Check daily challenge submission status')
+            .addStringOption(option =>
+                option.setName('username')
+                    .setDescription('LeetCode username to check (defaults to you)')
+                    .setRequired(false)
+                    .setAutocomplete(true))
+    },
+    {
         category: 'Admin',
         data: new SlashCommandBuilder()
             .setName('forcecheck')
