@@ -3,6 +3,7 @@ const { getUserSubmissions, getDailySlug, getBestDailySubmission, parseDuration,
 const { updateUserStats, getGuildConfig } = require('./configManager');
 const { sendTelegramMessage } = require('./telegramBot');
 const { generateSubmissionChart } = require('./chartGenerator');
+const { initializeStatsPanel } = require('./statsPanel');
 const { PermissionsBitField } = require('discord.js');
 const axios = require('axios');
 const logger = require('./logger');
@@ -57,6 +58,9 @@ async function initializeScheduledTasks(client) {
 
         // Initialize silent daily check
         await scheduleSilentDailyCheck(client);
+
+        // Initialize stats panel
+        await initializeStatsPanel(client);
     } catch (error) {
         logger.error('Error initializing scheduled tasks:', error);
     }

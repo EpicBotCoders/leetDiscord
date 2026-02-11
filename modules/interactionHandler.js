@@ -183,7 +183,8 @@ async function handleInteraction(interaction) {
 
         // Handle specific error: Guild not configured
         if (error.message === 'Guild not configured') {
-            const replyMessage = 'This server is not configured yet. Please run `/setchannel` to set an announcement channel and initialize the bot.';
+            const supportLink = process.env.DISCORD_SERVER_INVITE_LINK || 'https://discord.gg/4t5zg5SV69';
+            const replyMessage = `This server is not configured yet. Please run \`/setchannel\` to set an announcement channel and initialize the bot.\nNeed help? Join our support server: ${supportLink}`;
             if (interaction.deferred || interaction.replied) {
                 await interaction.editReply(replyMessage);
             } else {
@@ -194,7 +195,8 @@ async function handleInteraction(interaction) {
 
         // Only reply if we haven't already
         if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply('An error occurred while processing your command.');
+            const supportLink = process.env.DISCORD_SERVER_INVITE_LINK || 'https://discord.gg/4t5zg5SV69';
+            await interaction.reply(`An error occurred while processing your command. If this persists, please report it in our support server: ${supportLink}`);
         }
     }
 }
@@ -409,10 +411,15 @@ async function handleSetChannel(interaction) {
 
     let description = 'I will send LeetCode activity updates in this channel.';
 
+    const supportLink = process.env.DISCORD_SERVER_INVITE_LINK || 'https://discord.gg/4t5zg5SV69';
+
     if (isNewSetup) {
         description += '\n\n**⏰ Default Schedule Added**\n' +
             'Two daily checks have been scheduled at **10:00 UTC** and **18:00 UTC**.\n' +
-            'To remove them, use `/managecron remove`.';
+            'To remove them, use `/managecron remove`.\n\n' +
+            `Need help? [Join our Support Server](${supportLink})`;
+    } else {
+        description += `\n\nNeed help? [Join our Support Server](${supportLink})`;
     }
 
     // Send test embed to the channel
@@ -719,6 +726,10 @@ async function handleBotInfo(interaction) {
             {
                 name: '💡 Basic Commands',
                 value: '`/setchannel` - Set announcement channel\n`/adduser` - Track a user\n`/check` - Manual progress check\n`/managecron` - Schedule checks'
+            },
+            {
+                name: '🆘 Support',
+                value: `[Join Support Server](${process.env.DISCORD_SERVER_INVITE_LINK || 'https://discord.gg/4t5zg5SV69'})`
             }
         ],
         footer: {
@@ -767,7 +778,7 @@ async function handleHelp(interaction) {
     const helpEmbed = {
         color: 0x5865F2,
         title: '📖 LeetCode Discord Bot - Command Help',
-        description: 'Here are all available commands organized by category.',
+        description: `Here are all available commands organized by category.\n\n[Need help? Join our Support Server](${process.env.DISCORD_SERVER_INVITE_LINK || 'https://discord.gg/4t5zg5SV69'})`,
         fields: fields,
         footer: {
             text: 'LeetCode Discord Bot • GitHub: mochiron-desu/leetDiscord'

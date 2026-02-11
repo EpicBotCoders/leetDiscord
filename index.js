@@ -36,6 +36,10 @@ async function sendWelcomeMessage(guild) {
                 {
                     name: '📢 Features',
                     value: '• Track daily LeetCode challenge completion\n• Schedule automatic progress checks\n• Multiple server support\n• Discord user mentions'
+                },
+                {
+                    name: '🆘 Support',
+                    value: `Need help? Join our [Support Server](${process.env.DISCORD_SERVER_INVITE_LINK || 'https://discord.gg/4t5zg5SV69'})`
                 }
             ],
             footer: {
