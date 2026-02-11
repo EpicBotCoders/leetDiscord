@@ -2,6 +2,7 @@ require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const { connectDB } = require('../modules/models/db');
 const { getBestDailySubmission, parseDuration, parseMemory } = require('../modules/apiUtils');
+const { generateSubmissionChart } = require('../modules/chartGenerator');
 const { PermissionsBitField } = require('discord.js');
 const logger = require('../modules/logger');
 const mongoose = require('mongoose');
@@ -32,9 +33,23 @@ async function testSilentCronWithSlug(problemSlug) {
 
     // 3. Login and Run Check
     try {
-        await client.login(process.env.DISCORD_TOKEN);
+        console.log('⏳ Connecting to Discord...');
 
-        await new Promise(resolve => client.once('ready', resolve));
+        // Add timeout for login
+        const loginPromise = client.login(process.env.DISCORD_TOKEN);
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Discord login timeout after 30 seconds')), 30000)
+        );
+
+        await Promise.race([loginPromise, timeoutPromise]);
+
+        // Wait for ready event with timeout
+        const readyPromise = new Promise(resolve => client.once('ready', resolve));
+        const readyTimeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Discord ready timeout after 30 seconds')), 30000)
+        );
+
+        await Promise.race([readyPromise, readyTimeoutPromise]);
         console.log(`✅ Logged in and ready as ${client.user.tag}`);
 
         // Fetch problem details
@@ -95,11 +110,20 @@ async function testSilentCronWithSlug(problemSlug) {
         }
 
     } catch (error) {
-        console.error('❌ Error during test execution:', error);
+        console.error('❌ Error during test execution:', error.message);
+        if (error.message.includes('timeout')) {
+            console.error('\n💡 Troubleshooting tips:');
+            console.error('   1. Check your internet connection');
+            console.error('   2. Verify DISCORD_TOKEN in .env is correct');
+            console.error('   3. Try running the main bot (npm start) to verify connectivity');
+            console.error('   4. Check if Discord is having issues: https://discordstatus.com/');
+        }
     } finally {
         // 4. Cleanup
         console.log('\n👋 Cleaning up...');
-        client.destroy();
+        if (client) {
+            client.destroy();
+        }
         await mongoose.connection.close();
         console.log('✅ Test completed');
         process.exit(0);
@@ -157,13 +181,25 @@ async function postSubmissionReport(client, guild, problem, submissionsData) {
         title: `🏆 Daily Challenge Submissions (TEST)`,
         description: `**${problem.title}**\n\n**Ranked by Runtime**`,
         fields: fields,
+        image: {
+            url: 'attachment://submission-chart.png'
+        },
         footer: {
             text: `${submissionsData.length} user${submissionsData.length > 1 ? 's' : ''} completed this challenge • TEST MODE`
         },
         timestamp: new Date()
     };
 
-    await channel.send({ embeds: [embed] });
+    // Generate chart
+    const chartAttachment = await generateSubmissionChart(sortedSubmissions);
+
+    // Send message with embed and chart
+    const messageOptions = { embeds: [embed] };
+    if (chartAttachment) {
+        messageOptions.files = [chartAttachment];
+    }
+
+    await channel.send(messageOptions);
 }
 
 // Get problem slug from command line or use default

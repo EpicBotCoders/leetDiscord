@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const { getUserSubmissions, getDailySlug, getBestDailySubmission, parseDuration, parseMemory } = require('./apiUtils');
 const { updateUserStats, getGuildConfig } = require('./configManager');
 const { sendTelegramMessage } = require('./telegramBot');
+const { generateSubmissionChart } = require('./chartGenerator');
 const { PermissionsBitField } = require('discord.js');
 const axios = require('axios');
 const logger = require('./logger');
@@ -486,13 +487,25 @@ async function postSubmissionReport(client, guild, problem, submissionsData) {
             title: `🏆 Daily Challenge Submissions`,
             description: `**${problem.title}**\n\n**Ranked by Runtime**`,
             fields: fields,
+            image: {
+                url: 'attachment://submission-chart.png'
+            },
             footer: {
                 text: `${submissionsData.length} user${submissionsData.length > 1 ? 's' : ''} completed today's challenge`
             },
             timestamp: new Date()
         };
 
-        await channel.send({ embeds: [embed] });
+        // Generate chart
+        const chartAttachment = await generateSubmissionChart(sortedSubmissions);
+
+        // Send message with embed and chart
+        const messageOptions = { embeds: [embed] };
+        if (chartAttachment) {
+            messageOptions.files = [chartAttachment];
+        }
+
+        await channel.send(messageOptions);
         logger.info(`Posted submission report for guild ${guild.guildId} with ${submissionsData.length} submissions`);
     } catch (error) {
         logger.error('Error in postSubmissionReport:', error);
