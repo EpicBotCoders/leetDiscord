@@ -1,10 +1,10 @@
-const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs, setTelegramToken, toggleTelegramUpdates, getTelegramUser } = require('./configManager');
+const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs, setTelegramToken, toggleTelegramUpdates, getTelegramUser, getAllGuildConfigs } = require('./configManager');
 const { commandDefinitions } = require('./commandRegistration');
 const { enhancedCheck, getUserCalendar, getBestDailySubmission, getDailySlug } = require('./apiUtils');
 const { updateGuildCronJobs, performDailyCheck } = require('./scheduledTasks');
 const logger = require('./logger');
 const { v4: uuidv4 } = require('uuid');
-const { ChannelType } = require('discord.js');
+const { ChannelType, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 
 async function handleAutocomplete(interaction) {
     const { commandName, guildId } = interaction;
@@ -115,6 +115,14 @@ async function handleInteraction(interaction) {
         return;
     }
 
+    // Handle modal submits
+    if (interaction.isModalSubmit()) {
+        if (interaction.customId.startsWith('broadcast_')) {
+            await handleBroadcastSubmit(interaction);
+        }
+        return;
+    }
+
     if (!interaction.isCommand()) {
         logger.info('Interaction is not a command. Ignoring.');
         return;
@@ -163,6 +171,9 @@ async function handleInteraction(interaction) {
                 break;
             case 'forcecheck':
                 await handleForceCheck(interaction);
+                break;
+            case 'broadcast':
+                await handleBroadcast(interaction);
                 break;
             default:
                 await interaction.reply('Unknown command.');
@@ -390,14 +401,25 @@ async function handleSetChannel(interaction) {
         return;
     }
 
+    const existingConfig = await getGuildConfig(interaction.guildId);
+    const isNewSetup = !existingConfig;
+
     await initializeGuildConfig(interaction.guildId, channel.id);
     await updateGuildChannel(interaction.guildId, channel.id);
+
+    let description = 'I will send LeetCode activity updates in this channel.';
+
+    if (isNewSetup) {
+        description += '\n\n**⏰ Default Schedule Added**\n' +
+            'Two daily checks have been scheduled at **10:00 UTC** and **18:00 UTC**.\n' +
+            'To remove them, use `/managecron remove`.';
+    }
 
     // Send test embed to the channel
     const testEmbed = {
         color: 0x00ff00,
         title: '📢 Channel Setup Successful!',
-        description: 'I will send LeetCode activity updates in this channel.',
+        description: description,
         footer: {
             text: 'You can change this channel at any time using /setchannel'
         },
@@ -713,6 +735,7 @@ async function handleHelp(interaction) {
 
     // Group commands by category based on definitions
     commandDefinitions.forEach(cmd => {
+        if (cmd.hidden) return;
         if (!categories[cmd.category]) {
             categories[cmd.category] = [];
         }
@@ -781,6 +804,105 @@ async function handleForceCheck(interaction) {
     } catch (error) {
         logger.error('Error in forcecheck:', error);
         await interaction.editReply('An error occurred while performing the check.');
+    }
+}
+
+async function handleBroadcast(interaction) {
+    if (interaction.user.id !== '637911567920529409') {
+        await interaction.reply({ content: 'You are not authorized to use this command.', ephemeral: true });
+        return;
+    }
+
+    const type = interaction.options.getString('type');
+
+    const modal = new ModalBuilder()
+        .setCustomId(`broadcast_${type}`)
+        .setTitle('Broadcast Message');
+
+    const messageInput = new TextInputBuilder()
+        .setCustomId('messageInput')
+        .setLabel("What's the announcement?")
+        .setStyle(TextInputStyle.Paragraph)
+        .setPlaceholder('Enter your message here (multiline supported)...')
+        .setRequired(true);
+
+    const firstActionRow = new ActionRowBuilder().addComponents(messageInput);
+
+    modal.addComponents(firstActionRow);
+
+    await interaction.showModal(modal);
+}
+
+async function handleBroadcastSubmit(interaction) {
+    const type = interaction.customId.split('_')[1];
+    const messageContent = interaction.fields.getTextInputValue('messageInput');
+
+    let embedColor;
+    let embedTitle;
+
+    switch (type) {
+        case 'info':
+            embedColor = 0x3498db; // Blue
+            embedTitle = '📢 Information';
+            break;
+        case 'warn':
+            embedColor = 0xf1c40f; // Yellow
+            embedTitle = '⚠️ Warning';
+            break;
+        case 'alert':
+            embedColor = 0xe74c3c; // Red
+            embedTitle = '🚨 Alert';
+            break;
+        default:
+            embedColor = 0x95a5a6; // Grey
+            embedTitle = 'Broadcast';
+    }
+
+    const embed = {
+        color: embedColor,
+        title: embedTitle,
+        description: messageContent,
+        footer: {
+            text: 'System Broadcast'
+        },
+        timestamp: new Date()
+    };
+
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+        const guilds = await getAllGuildConfigs();
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const guildConfig of guilds) {
+            if (!guildConfig.channelId) continue;
+
+            try {
+                // Fetch guild to ensure bot is still in it
+                const guild = await interaction.client.guilds.fetch(guildConfig.guildId).catch(() => null);
+                if (!guild) {
+                    failCount++;
+                    continue;
+                }
+
+                const channel = await guild.channels.fetch(guildConfig.channelId).catch(() => null);
+                if (channel) {
+                    await channel.send({ embeds: [embed] });
+                    successCount++;
+                } else {
+                    failCount++;
+                }
+            } catch (error) {
+                logger.warn(`Failed to send broadcast to guild ${guildConfig.guildId}:`, error.message);
+                failCount++;
+            }
+        }
+
+        await interaction.editReply(`Broadcast sent successfully to ${successCount} guilds. Failed for ${failCount} guilds.`);
+    } catch (error) {
+        logger.error('Error in broadcast command:', error);
+        await interaction.editReply('An error occurred while sending the broadcast.');
     }
 }
 

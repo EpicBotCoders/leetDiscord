@@ -142,6 +142,22 @@ const commandDefinitions = [
             .setName('forcecheck')
             .setDescription('Manually trigger the daily check for this server (Admin only)')
             .setDefaultMemberPermissions(0x8) // Administrator permission
+    },
+    {
+        category: 'Admin',
+        hidden: true,
+        data: new SlashCommandBuilder()
+            .setName('broadcast')
+            .setDescription('Broadcast a message to all guilds')
+            .addStringOption(option =>
+                option.setName('type')
+                    .setDescription('Type of broadcast')
+                    .setRequired(true)
+                    .addChoices(
+                        { name: 'Info', value: 'info' },
+                        { name: 'Warn', value: 'warn' },
+                        { name: 'Alert', value: 'alert' }
+                    ))
     }
 ];
 

@@ -12,6 +12,10 @@ async function getGuildConfig(guildId) {
     return await Guild.findOne({ guildId });
 }
 
+async function getAllGuildConfigs() {
+    return await Guild.find({});
+}
+
 async function initializeGuildConfig(guildId, channelId) {
     let guild = await Guild.findOne({ guildId });
     if (!guild) {
@@ -414,5 +418,6 @@ module.exports = {
     linkTelegramChat,
     toggleTelegramUpdates,
     getTelegramUser,
-    getConnectionByChatId
+    getConnectionByChatId,
+    getAllGuildConfigs
 };
