@@ -10,6 +10,36 @@ export const metadata: Metadata = {
   title: 'LeetDiscord — Track LeetCode Activity in Discord',
   description:
     'LeetDiscord helps Discord communities track LeetCode activity, stay accountable, showcase progress, and drive engagement around coding practice.',
+  keywords: ['LeetCode', 'Discord', 'Bot', 'Coding', 'Tracking', 'Community', 'Developer', 'Programming'],
+  authors: [{ name: 'mochiron-desu', url: 'https://github.com/mochiron-desu' }],
+  creator: 'mochiron-desu',
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
+  openGraph: {
+    title: 'LeetDiscord — Track LeetCode Activity in Discord',
+    description: 'LeetDiscord helps Discord communities track LeetCode activity, stay accountable, showcase progress, and drive engagement around coding practice.',
+    siteName: 'LeetDiscord',
+    locale: 'en_US',
+    type: 'website',
+    images: [
+      {
+        url: '/landing_page.png',
+        width: 1200,
+        height: 630,
+        alt: 'LeetDiscord Landing Page',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'LeetDiscord — Track LeetCode Activity in Discord',
+    description: 'LeetDiscord helps Discord communities track LeetCode activity, stay accountable, showcase progress, and drive engagement around coding practice.',
+    creator: '@mochiron_desu',
+    images: ['/landing_page.png'],
+  },
 }
 
 export const viewport: Viewport = {
