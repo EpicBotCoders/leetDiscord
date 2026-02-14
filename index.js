@@ -97,21 +97,113 @@ async function main() {
         await startTelegramBot();
 
 
-        // Start a simple HTTP server to satisfy Render's port binding requirement
+        // Express App setup
+        const express = require('express');
+        const cors = require('cors');
+        const path = require('path');
+        const RateLimit = require('express-rate-limit');
+        const Guild = require('./modules/models/Guild');
+
+        const DailySubmission = require('./modules/models/DailySubmission');
+
+        const app = express();
         const port = process.env.PORT || 3000;
-        const server = http.createServer((req, res) => {
-            res.writeHead(200);
-            res.end('Alive');
+
+        // Rate limiter for frontend catch-all route
+        const frontendLimiter = RateLimit({
+            windowMs: 15 * 60 * 1000, // 15 minutes
+            max: 100, // limit each IP to 100 requests per windowMs
         });
 
-        server.listen(port, () => {
-            logger.info(`HTTP server listening on port ${port}`);
+        app.use(cors());
+        app.use(express.static(path.join(__dirname, 'frontend/out')));
+
+        // API Endpoints
+        app.get('/api/stats', async (req, res) => {
+            try {
+                const totalGuilds = await Guild.countDocuments();
+                const totalSubmissions = await DailySubmission.countDocuments();
+
+                // Calculate total users across all guilds
+                // Since users are in a Map in each guild document, we need to aggregate
+                const guilds = await Guild.find({}, 'users');
+                let totalUsers = 0;
+                const uniqueUsers = new Set();
+
+                for (const guild of guilds) {
+                    if (guild.users) {
+                        for (const userId of guild.users.keys()) {
+                            uniqueUsers.add(userId);
+                        }
+                    }
+                }
+                totalUsers = uniqueUsers.size;
+
+                res.json({
+                    guilds: totalGuilds,
+                    users: totalUsers,
+                    submissions: totalSubmissions,
+                    version: process.env.npm_package_version || '2.2.0'
+                });
+            } catch (error) {
+                logger.error('API Error:', error);
+                res.status(500).json({ error: 'Internal Server Error' });
+            }
         });
 
-        // Self-ping to prevent sleeping
+        app.get('/api/leaderboard/:guildId', async (req, res) => {
+            try {
+                const { guildId } = req.params;
+                const guild = await Guild.findOne({ guildId });
+                if (!guild) {
+                    return res.status(404).json({ error: 'Guild not found' });
+                }
+
+                // Transform data for frontend
+                const leaderboard = [];
+                for (const [userId, username] of guild.users) {
+                    const stats = guild.userStats.get(userId);
+                    if (stats) {
+                        leaderboard.push({
+                            userId,
+                            username,
+                            ...stats.toObject() // Convert Mongoose subdocument to object
+                        });
+                    }
+                }
+
+                // Sort by total active days (descending)
+                leaderboard.sort((a, b) => b.totalActiveDays - a.totalActiveDays);
+
+                res.json(leaderboard);
+            } catch (error) {
+                logger.error('API Error:', error);
+                res.status(500).json({ error: 'Internal Server Error' });
+            }
+        });
+
+        // Catch-all to serve index.html for client-side routing
+        // In Express 5, '*' is not a valid wildcard. using regex instead.
+        app.get(/(.*)/, frontendLimiter, (req, res) => {
+            res.sendFile(path.join(__dirname, 'frontend/out/index.html'));
+        });
+
+        const server = app.listen(port, () => {
+            logger.info(`Express server listening on port ${port}`);
+        });
+
+        // Self-ping to prevent sleeping (Render free tier)
         setInterval(() => {
-            http.get(`http://localhost:${port}`);
+            http.get(`http://localhost:${port}/api/health`, (res) => {
+                // consume response
+                res.resume();
+            }).on('error', (e) => {
+                // ignore error
+            });
         }, 60000); // Ping every 1 minute
+
+        // Health check endpoint
+        app.get('/api/health', (req, res) => res.send('Alive'));
 
         // Setup graceful shutdown handlers
         setupGracefulShutdown(client, server);
