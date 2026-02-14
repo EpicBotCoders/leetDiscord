@@ -49,7 +49,7 @@ export function Hero() {
             className="h-14 gap-2 rounded-xl bg-primary px-8 text-base font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 hover:shadow-xl hover:shadow-primary/30"
           >
             <a
-              href="https://discord.com/api/oauth2/authorize?client_id=1469988043044688035&permissions=19456&scope=bot%20applications.commands"
+              href="https://discord.com/api/oauth2/authorize?client_id=1367467907315007609&permissions=19456&scope=bot%20applications.commands"
               target="_blank"
               rel="noopener noreferrer"
             >
