@@ -101,12 +101,19 @@ async function main() {
         const express = require('express');
         const cors = require('cors');
         const path = require('path');
+        const RateLimit = require('express-rate-limit');
         const Guild = require('./modules/models/Guild');
 
         const DailySubmission = require('./modules/models/DailySubmission');
 
         const app = express();
         const port = process.env.PORT || 3000;
+
+        // Rate limiter for frontend catch-all route
+        const frontendLimiter = RateLimit({
+            windowMs: 15 * 60 * 1000, // 15 minutes
+            max: 100, // limit each IP to 100 requests per windowMs
+        });
 
         app.use(cors());
         app.use(express.static(path.join(__dirname, 'frontend/out')));
@@ -177,7 +184,7 @@ async function main() {
 
         // Catch-all to serve index.html for client-side routing
         // In Express 5, '*' is not a valid wildcard. using regex instead.
-        app.get(/(.*)/, (req, res) => {
+        app.get(/(.*)/, frontendLimiter, (req, res) => {
             res.sendFile(path.join(__dirname, 'frontend/out/index.html'));
         });
 
