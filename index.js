@@ -115,11 +115,17 @@ async function main() {
             max: 100, // limit each IP to 100 requests per windowMs
         });
 
+        // Rate limiter for stats API route
+        const statsLimiter = RateLimit({
+            windowMs: 15 * 60 * 1000, // 15 minutes
+            max: 100, // limit each IP to 100 requests per windowMs
+        });
+
         app.use(cors());
         app.use(express.static(path.join(__dirname, 'frontend/out')));
 
         // API Endpoints
-        app.get('/api/stats', async (req, res) => {
+        app.get('/api/stats', statsLimiter, async (req, res) => {
             try {
                 const totalGuilds = await Guild.countDocuments();
                 const totalSubmissions = await DailySubmission.countDocuments();
