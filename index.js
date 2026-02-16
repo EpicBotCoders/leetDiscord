@@ -2,7 +2,7 @@
 
 // Import necessary modules
 const { Client, GatewayIntentBits } = require('discord.js');
-const { handleInteraction } = require('./modules/interactionHandler');
+const { handleInteraction, initializeAutocompleteCache } = require('./modules/interactionHandler');
 const { registerCommands } = require('./modules/commandRegistration');
 const { loadConfig } = require('./modules/configManager');
 const { connectDB } = require('./modules/models/db');
@@ -76,6 +76,7 @@ async function main() {
                 logger.info('Bot is ready!');
                 await registerCommands(client.application.id);
                 await initializeScheduledTasks(client);
+                await initializeAutocompleteCache();
                 logger.info('Bot initialization complete');
             } catch (error) {
                 logger.error('Error during bot initialization:', error);

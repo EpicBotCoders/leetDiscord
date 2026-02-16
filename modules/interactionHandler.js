@@ -6,6 +6,76 @@ const logger = require('./logger');
 const { v4: uuidv4 } = require('uuid');
 const { ChannelType, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 
+// Cache for autocomplete data - updated only when members or cron jobs are added/removed
+const usernameCache = new Map(); // Map<guildId, string[]> - array of usernames
+const cronJobsCache = new Map(); // Map<guildId, string[]> - array of cron schedule strings
+
+// Helper function to get cached usernames, fetching from DB if not cached
+async function getCachedUsernames(guildId) {
+    if (!usernameCache.has(guildId)) {
+        logger.info(`No cached usernames for guild ${guildId}, fetching from DB`);
+        const users = await getGuildUsers(guildId);
+        const usernames = Object.keys(users);
+        usernameCache.set(guildId, usernames);
+    }
+    logger.info(`Returning cached usernames for guild ${guildId}: ${usernameCache.get(guildId)}`);
+    return usernameCache.get(guildId);
+}
+
+// Helper function to get cached cron jobs, fetching from DB if not cached
+async function getCachedCronJobs(guildId) {
+    logger.info(`Getting cached cron jobs for guild ${guildId}`);
+    if (!cronJobsCache.has(guildId)) {
+        logger.info(`No cached cron jobs for guild ${guildId}, fetching from DB`);
+        const cronJobs = await listCronJobs(guildId);
+        cronJobsCache.set(guildId, cronJobs);
+    }
+    logger.info(`Returning cached cron jobs for guild ${guildId}: ${cronJobsCache.get(guildId)}`);
+    return cronJobsCache.get(guildId);
+}
+
+// Helper function to invalidate username cache for a guild
+function invalidateUsernameCache(guildId) {
+    logger.info(`Invalidating username cache for guild ${guildId}`);
+    usernameCache.delete(guildId);
+}
+
+// Helper function to invalidate cron jobs cache for a guild
+function invalidateCronJobsCache(guildId) {
+    logger.info(`Invalidating cron jobs cache for guild ${guildId}`);
+    cronJobsCache.delete(guildId);
+}
+
+// Initialize cache for all guilds on bot startup
+async function initializeAutocompleteCache() {
+    try {
+        const guilds = await getAllGuildConfigs();
+        
+        for (const guild of guilds) {
+            // Initialize username cache
+            try {
+                const users = await getGuildUsers(guild.guildId);
+                const usernames = Object.keys(users);
+                usernameCache.set(guild.guildId, usernames);
+            } catch (error) {
+                logger.warn(`Failed to initialize username cache for guild ${guild.guildId}:`, error);
+            }
+            
+            // Initialize cron jobs cache
+            try {
+                const cronJobs = await listCronJobs(guild.guildId);
+                cronJobsCache.set(guild.guildId, cronJobs);
+            } catch (error) {
+                logger.warn(`Failed to initialize cron jobs cache for guild ${guild.guildId}:`, error);
+            }
+        }
+        
+        logger.info(`Initialized autocomplete cache for ${guilds.length} guild(s)`);
+    } catch (error) {
+        logger.error('Error initializing autocomplete cache:', error);
+    }
+}
+
 async function handleAutocomplete(interaction) {
     const { commandName, guildId } = interaction;
 
@@ -36,8 +106,7 @@ async function handleUsernameAutocomplete(interaction) {
     const focusedValue = interaction.options.getFocused().toLowerCase();
 
     try {
-        const users = await getGuildUsers(interaction.guildId);
-        const usernames = Object.keys(users);
+        const usernames = await getCachedUsernames(interaction.guildId);
 
         // Filter usernames based on user input
         const filtered = usernames
@@ -67,7 +136,7 @@ async function handleCronAutocomplete(interaction) {
     const focusedValue = interaction.options.getFocused();
 
     try {
-        const cronJobs = await listCronJobs(interaction.guildId);
+        const cronJobs = await getCachedCronJobs(interaction.guildId);
 
         if (cronJobs.length === 0) {
             await interaction.respond([]);
@@ -340,6 +409,13 @@ async function handleAddUser(interaction) {
 
     logger.info(`Adding user: ${username} with Discord ID: ${discordId}`);
     const addResult = await addUser(interaction.guildId, username, discordId);
+    
+    // Invalidate cache if user was successfully added (check for success message prefix)
+    // Success messages start with "Added", error message contains "already being tracked"
+    if (addResult.startsWith('Added')) {
+        invalidateUsernameCache(interaction.guildId);
+    }
+    
     await interaction.reply(addResult);
 }
 
@@ -362,6 +438,13 @@ async function handleRemoveUser(interaction) {
 
     logger.info(`Removing user: ${username}`);
     const removeResult = await removeUser(interaction.guildId, username);
+    
+    // Invalidate cache if user was successfully removed (check for success message prefix)
+    // Success message starts with "Removed", error message contains "not in the tracking list"
+    if (removeResult.startsWith('Removed')) {
+        invalidateUsernameCache(interaction.guildId);
+    }
+    
     await interaction.reply(removeResult);
 }
 
@@ -456,6 +539,13 @@ async function handleManageCron(interaction) {
             const hours = interaction.options.getInteger('hours');
             const minutes = interaction.options.getInteger('minutes');
             result = await addCronJob(interaction.guildId, hours, minutes);
+            
+            // Invalidate cache if cron job was successfully added (check for success message prefix)
+            // Success message starts with "Added new check time", error message contains "already scheduled"
+            if (result.startsWith('Added new check time')) {
+                invalidateCronJobsCache(interaction.guildId);
+            }
+            
             await interaction.reply(result);
             // Update cron jobs after adding
             await updateGuildCronJobs(interaction.guildId);
@@ -476,6 +566,13 @@ async function handleManageCron(interaction) {
             }
 
             result = await removeCronJob(interaction.guildId, hours, minutes);
+            
+            // Invalidate cache if cron job was successfully removed (check for success message prefix)
+            // Success message starts with "Removed check time", error message contains "No check scheduled"
+            if (result.startsWith('Removed check time')) {
+                invalidateCronJobsCache(interaction.guildId);
+            }
+            
             await interaction.reply(result);
             // Update cron jobs after removing
             await updateGuildCronJobs(interaction.guildId);
@@ -1048,4 +1145,4 @@ async function handleDaily(interaction) {
     }
 }
 
-module.exports = { handleInteraction };
+module.exports = { handleInteraction, initializeAutocompleteCache };
