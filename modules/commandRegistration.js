@@ -106,6 +106,61 @@ const commandDefinitions = [
                     .setRequired(false))
     },
     {
+        category: 'Setup',
+        data: new SlashCommandBuilder()
+            .setName('config')
+            .setDescription('Show this server\'s LeetCode bot configuration')
+    },
+    {
+        category: 'Monitoring',
+        data: new SlashCommandBuilder()
+            .setName('calendar')
+            .setDescription('Show recent LeetCode activity as a compact calendar')
+            .addIntegerOption(option =>
+                option.setName('range')
+                    .setDescription('Number of days to show')
+                    .setRequired(false)
+                    .addChoices(
+                        { name: 'Last 7 days', value: 7 },
+                        { name: 'Last 30 days', value: 30 },
+                        { name: 'Last 90 days', value: 90 }
+                    ))
+            .addStringOption(option =>
+                option.setName('username')
+                    .setDescription('LeetCode username to view (defaults to you)')
+                    .setRequired(false)
+                    .setAutocomplete(true))
+    },
+    {
+        category: 'Monitoring',
+        data: new SlashCommandBuilder()
+            .setName('leaderboard')
+            .setDescription('Show a LeetCode leaderboard for this server')
+            .addStringOption(option =>
+                option.setName('period')
+                    .setDescription('Time window for the leaderboard')
+                    .setRequired(false)
+                    .addChoices(
+                        { name: 'Daily', value: 'daily' },
+                        { name: 'Weekly', value: 'weekly' },
+                        { name: 'Monthly', value: 'monthly' },
+                        { name: 'All Time', value: 'all_time' }
+                    ))
+            .addStringOption(option =>
+                option.setName('metric')
+                    .setDescription('Metric to rank users by')
+                    .setRequired(false)
+                    .addChoices(
+                        { name: 'Current Streak', value: 'streak' },
+                        { name: 'Problems Solved', value: 'problems_solved' },
+                        { name: 'Active Days', value: 'active_days' }
+                    ))
+            .addBooleanOption(option =>
+                option.setName('ephemeral')
+                    .setDescription('Show leaderboard only to you (default: false)')
+                    .setRequired(false))
+    },
+    {
         category: 'Information',
         data: new SlashCommandBuilder()
             .setName('botinfo')

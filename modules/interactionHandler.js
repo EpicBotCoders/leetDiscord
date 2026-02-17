@@ -4,7 +4,9 @@ const { enhancedCheck, getUserCalendar, getBestDailySubmission, getDailySlug } =
 const { updateGuildCronJobs, performDailyCheck } = require('./scheduledTasks');
 const logger = require('./logger');
 const { v4: uuidv4 } = require('uuid');
-const { ChannelType, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+const { ChannelType, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const TelegramUser = require('./models/TelegramUser');
+const DailySubmission = require('./models/DailySubmission');
 
 // Cache for autocomplete data - updated only when members or cron jobs are added/removed
 const usernameCache = new Map(); // Map<guildId, string[]> - array of usernames
@@ -228,6 +230,12 @@ async function handleCronAutocomplete(interaction) {
 async function handleInteraction(interaction) {
     logger.info(`Interaction received: ${interaction.commandName}`);
 
+    // Handle leaderboard pagination buttons
+    if (interaction.isButton() && interaction.customId.startsWith('lb:')) {
+        await handleLeaderboardPagination(interaction);
+        return;
+    }
+
     // Handle autocomplete interactions
     if (interaction.isAutocomplete()) {
         await handleAutocomplete(interaction);
@@ -278,6 +286,15 @@ async function handleInteraction(interaction) {
                 break;
             case 'leetstats':
                 await handleLeetStats(interaction);
+                break;
+            case 'config':
+                await handleConfig(interaction);
+                break;
+            case 'calendar':
+                await handleCalendar(interaction);
+                break;
+            case 'leaderboard':
+                await handleLeaderboard(interaction);
                 break;
             case 'botinfo':
                 await handleBotInfo(interaction);
@@ -880,6 +897,553 @@ async function handleLeetStats(interaction) {
             await interaction.editReply({ embeds: [fallbackEmbed] });
         }
     }
+}
+
+async function handleConfig(interaction) {
+    const isAdmin = await hasAdminAccess(interaction);
+    if (!isAdmin) {
+        await interaction.reply({
+            content: 'You need the configured Admin role (or Administrator permission) to view the configuration.',
+            ephemeral: true
+        });
+        return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+        const guildConfig = await getGuildConfig(interaction.guildId);
+        if (!guildConfig) {
+            await interaction.editReply('This server is not configured yet. Please run `/setchannel` first.');
+            return;
+        }
+
+        const guildUsers = await getGuildUsers(interaction.guildId);
+        const trackedUsernames = Object.keys(guildUsers);
+
+        const cronSchedules = await listCronJobs(interaction.guildId);
+        const formattedCron = cronSchedules.length
+            ? cronSchedules.map(schedule => {
+                const [minutes, hours] = schedule.split(' ');
+                return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')} UTC`;
+            }).join('\n')
+            : 'None configured';
+
+        const totalTrackedUsers = trackedUsernames.length;
+        const discordLinkedUsers = Object.values(guildUsers).filter(id => !!id).length;
+
+        const telegramEnabledGlobally = !!process.env.TELEGRAM_BOT_TOKEN;
+
+        let telegramEnabledCount = 0;
+        if (telegramEnabledGlobally && totalTrackedUsers > 0) {
+            telegramEnabledCount = await TelegramUser.countDocuments({
+                leetcodeUsername: { $in: trackedUsernames },
+                isEnabled: true,
+                telegramChatId: { $ne: null }
+            });
+        }
+
+        const adminRoleId = await getAdminRole(interaction.guildId);
+        let adminRoleDisplay = 'Not configured (fallback: Discord Administrator)';
+        if (adminRoleId) {
+            const role = interaction.guild?.roles?.cache?.get(adminRoleId);
+            adminRoleDisplay = role ? role.toString() : `<@&${adminRoleId}>`;
+        }
+
+        const announcementChannel = guildConfig.channelId
+            ? `<#${guildConfig.channelId}>`
+            : 'Not set (use `/setchannel`)';
+
+        const embed = {
+            color: 0x00d9ff,
+            title: '⚙️ Server Configuration Overview',
+            fields: [
+                {
+                    name: '📢 Announcement Channel',
+                    value: announcementChannel,
+                    inline: true
+                },
+                {
+                    name: '⏰ Check Schedule',
+                    value: formattedCron,
+                    inline: true
+                },
+                {
+                    name: '👥 Tracked Users',
+                    value: `Total: **${totalTrackedUsers}**\nLinked to Discord: **${discordLinkedUsers}**`,
+                    inline: true
+                },
+                {
+                    name: '📲 Telegram Integration',
+                    value: telegramEnabledGlobally
+                        ? `Status: **Enabled** (token configured)\nUsers with notifications on: **${telegramEnabledCount}**`
+                        : 'Status: **Disabled** (no Telegram bot token configured)',
+                    inline: true
+                },
+                {
+                    name: '🛡️ Admin Role',
+                    value: adminRoleDisplay,
+                    inline: true
+                }
+            ],
+            footer: {
+                text: 'Use /setchannel, /managecron, /adduser and /telegram to update this configuration.'
+            },
+            timestamp: new Date()
+        };
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        logger.error('Error in handleConfig:', error);
+        await interaction.editReply('An error occurred while fetching the configuration.');
+    }
+}
+
+function buildCalendarHeatmap(calendarData, rangeDays) {
+    const submissionCalendar = calendarData?.submissionCalendar || calendarData?.calendar;
+    if (!submissionCalendar || typeof submissionCalendar !== 'object') {
+        return null;
+    }
+
+    // Build a set of ISO date strings (YYYY-MM-DD) that had activity
+    const activeDates = new Set();
+    for (const [key, count] of Object.entries(submissionCalendar)) {
+        if (!count) continue;
+        const timestamp = parseInt(key, 10);
+        if (Number.isNaN(timestamp)) continue;
+        const date = new Date(timestamp * 1000);
+        const iso = date.toISOString().slice(0, 10);
+        activeDates.add(iso);
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const blocks = [];
+
+    for (let i = rangeDays - 1; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const iso = d.toISOString().slice(0, 10);
+        const active = activeDates.has(iso);
+        blocks.push(active ? '🟩' : '⬛');
+    }
+
+    // Group into weeks for a cleaner grid (oldest week on top)
+    const rows = [];
+    for (let i = 0; i < blocks.length; i += 7) {
+        rows.push(blocks.slice(i, i + 7).join(' '));
+    }
+
+    return rows.join('\n');
+}
+
+async function handleCalendar(interaction) {
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+        const rangeOption = interaction.options.getInteger('range') || 7;
+        const allowedRanges = [7, 30, 90];
+        const range = allowedRanges.includes(rangeOption) ? rangeOption : 7;
+
+        const usernameOption = interaction.options.getString('username');
+        const guildUsers = await getGuildUsers(interaction.guildId);
+
+        if (Object.keys(guildUsers).length === 0) {
+            await interaction.editReply('No users are being tracked in this server. Use `/adduser` to start tracking!');
+            return;
+        }
+
+        let targetUsername = null;
+        let targetDiscordId = null;
+
+        if (usernameOption) {
+            if (!guildUsers[usernameOption]) {
+                await interaction.editReply(`❌ User **${usernameOption}** is not tracked in this server.`);
+                return;
+            }
+            targetUsername = usernameOption;
+            targetDiscordId = guildUsers[usernameOption];
+        } else {
+            const entry = Object.entries(guildUsers).find(([leetcode, discordId]) => discordId === interaction.user.id);
+            if (!entry) {
+                await interaction.editReply('❌ You are not registered in this server. Use `/adduser` to start tracking your LeetCode progress!');
+                return;
+            }
+            targetUsername = entry[0];
+            targetDiscordId = entry[1];
+        }
+
+        const calendarData = await getUserCalendar(targetUsername);
+        if (!calendarData) {
+            await interaction.editReply('❌ Could not fetch your LeetCode calendar. Please try again later.');
+            return;
+        }
+
+        const heatmap = buildCalendarHeatmap(calendarData, range);
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const start = new Date(today);
+        start.setDate(today.getDate() - (range - 1));
+
+        const mention = targetDiscordId ? `<@${targetDiscordId}>` : targetUsername;
+
+        const fields = [
+            {
+                name: '🔥 Current Streak',
+                value: `${calendarData.streak || 0} days`,
+                inline: true
+            },
+            {
+                name: '📅 Total Active Days',
+                value: `${calendarData.totalActiveDays || 0}`,
+                inline: true
+            },
+            {
+                name: '📆 Active Years',
+                value: calendarData.activeYears && calendarData.activeYears.length > 0
+                    ? calendarData.activeYears.join(', ')
+                    : 'N/A',
+                inline: true
+            },
+            {
+                name: `Last ${range} days (${start.toISOString().slice(0, 10)} → ${today.toISOString().slice(0, 10)})`,
+                value: heatmap || 'No detailed calendar data available for this user.',
+                inline: false
+            }
+        ];
+
+        const embed = {
+            color: 0x5865F2,
+            title: `🗓️ Activity Calendar for ${targetUsername}`,
+            description: `Recent LeetCode activity for ${mention}`,
+            fields,
+            footer: {
+                text: 'Blocks: 🟩 active day, ⬛ no activity (based on LeetCode calendar)'
+            },
+            timestamp: new Date()
+        };
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        logger.error('Error in handleCalendar:', error);
+        await interaction.editReply('❌ An error occurred while fetching calendar data. Please try again later.');
+    }
+}
+
+function computeDateRange(period) {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    let start = null;
+    let end = null;
+
+    switch (period) {
+        case 'daily':
+            start = new Date(now);
+            end = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+            break;
+        case 'weekly':
+            start = new Date(now);
+            start.setDate(now.getDate() - 6);
+            end = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+            break;
+        case 'monthly':
+            start = new Date(now);
+            start.setDate(now.getDate() - 29);
+            end = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+            break;
+        case 'all_time':
+        default:
+            start = null;
+            end = null;
+    }
+
+    return { start, end };
+}
+
+async function handleLeaderboard(interaction) {
+    const period = interaction.options.getString('period') || 'daily';
+    const metric = interaction.options.getString('metric') || 'streak';
+    const ephemeral = interaction.options.getBoolean('ephemeral') || false;
+
+    await interaction.deferReply({ ephemeral });
+
+    try {
+        const guildUsers = await getGuildUsers(interaction.guildId);
+        if (Object.keys(guildUsers).length === 0) {
+            await interaction.editReply('No users are being tracked in this server. Use `/adduser` to start tracking!');
+            return;
+        }
+
+        const guildConfig = await getGuildConfig(interaction.guildId);
+        const page = 1;
+
+        const { rows, totalUsers } = await buildLeaderboardRows(
+            interaction.guildId,
+            guildUsers,
+            guildConfig,
+            metric,
+            period
+        );
+
+        if (rows.length === 0) {
+            await interaction.editReply('No leaderboard data available for this period yet.');
+            return;
+        }
+
+        const pageSize = 10;
+        const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+        const pagedRows = rows.slice(0, pageSize);
+
+        const embed = buildLeaderboardEmbed(
+            interaction.guild,
+            metric,
+            period,
+            pagedRows,
+            page,
+            totalPages,
+            totalUsers
+        );
+
+        const components = buildLeaderboardComponents(
+            interaction.guildId,
+            interaction.user.id,
+            metric,
+            period,
+            page,
+            totalPages
+        );
+
+        await interaction.editReply({ embeds: [embed], components });
+    } catch (error) {
+        logger.error('Error in handleLeaderboard:', error);
+        await interaction.editReply('An error occurred while building the leaderboard.');
+    }
+}
+
+async function handleLeaderboardPagination(interaction) {
+    try {
+        const parts = interaction.customId.split(':');
+        // lb:guildId:ownerId:metric:period:page
+        if (parts.length !== 6) {
+            await interaction.reply({ content: 'Invalid leaderboard state.', ephemeral: true });
+            return;
+        }
+
+        const [, guildId, ownerId, metric, period, pageStr] = parts;
+
+        if (guildId !== interaction.guildId) {
+            await interaction.reply({ content: 'This leaderboard belongs to another server.', ephemeral: true });
+            return;
+        }
+
+        if (interaction.user.id !== ownerId) {
+            await interaction.reply({ content: 'Only the user who requested this leaderboard can change pages.', ephemeral: true });
+            return;
+        }
+
+        const currentPage = parseInt(pageStr, 10) || 1;
+
+        const guildUsers = await getGuildUsers(interaction.guildId);
+        const guildConfig = await getGuildConfig(interaction.guildId);
+
+        const { rows, totalUsers } = await buildLeaderboardRows(
+            interaction.guildId,
+            guildUsers,
+            guildConfig,
+            metric,
+            period
+        );
+
+        if (rows.length === 0) {
+            await interaction.update({ content: 'No leaderboard data available for this period yet.', components: [], embeds: [] });
+            return;
+        }
+
+        const pageSize = 10;
+        const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+        const page = Math.min(Math.max(1, currentPage), totalPages);
+        const startIndex = (page - 1) * pageSize;
+        const pagedRows = rows.slice(startIndex, startIndex + pageSize);
+
+        const embed = buildLeaderboardEmbed(
+            interaction.guild,
+            metric,
+            period,
+            pagedRows,
+            page,
+            totalPages,
+            totalUsers
+        );
+
+        const components = buildLeaderboardComponents(
+            interaction.guildId,
+            ownerId,
+            metric,
+            period,
+            page,
+            totalPages
+        );
+
+        await interaction.update({ embeds: [embed], components });
+    } catch (error) {
+        logger.error('Error in handleLeaderboardPagination:', error);
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: 'Error updating leaderboard.', ephemeral: true });
+        }
+    }
+}
+
+async function buildLeaderboardRows(guildId, guildUsers, guildConfig, metric, period) {
+    const usernames = Object.keys(guildUsers);
+    const totalUsers = usernames.length;
+
+    if (metric === 'streak') {
+        const rows = usernames.map(username => {
+            const stats = guildConfig.userStats?.get(username);
+            return {
+                username,
+                discordId: guildUsers[username],
+                value: stats?.streak || 0
+            };
+        }).filter(row => row.value > 0);
+
+        rows.sort((a, b) => b.value - a.value || a.username.localeCompare(b.username));
+        return { rows, totalUsers };
+    }
+
+    const { start, end } = computeDateRange(period);
+
+    const match = { guildId };
+    if (start && end) {
+        match.date = { $gte: start, $lt: end };
+    }
+
+    const pipeline = [
+        { $match: match },
+        {
+            $group: {
+                _id: { userId: '$userId', username: '$leetcodeUsername' },
+                problemsSolved: { $sum: 1 },
+                activeDates: { $addToSet: '$date' }
+            }
+        },
+        {
+            $project: {
+                _id: 0,
+                userId: '$_id.userId',
+                username: '$_id.username',
+                problemsSolved: 1,
+                activeDays: { $size: '$activeDates' }
+            }
+        }
+    ];
+
+    const aggResults = await DailySubmission.aggregate(pipeline);
+
+    const rows = aggResults.map(doc => {
+        const username = doc.username;
+        const discordId = guildUsers[username] || null;
+        let value = 0;
+
+        if (metric === 'problems_solved') {
+            value = doc.problemsSolved || 0;
+        } else if (metric === 'active_days') {
+            value = doc.activeDays || 0;
+        }
+
+        return {
+            username,
+            discordId,
+            value
+        };
+    }).filter(row => row.value > 0);
+
+    rows.sort((a, b) => b.value - a.value || a.username.localeCompare(b.username));
+
+    return { rows, totalUsers };
+}
+
+function buildLeaderboardEmbed(guild, metric, period, rows, page, totalPages, totalUsers) {
+    const metricLabels = {
+        streak: 'Current Streak',
+        problems_solved: 'Problems Solved',
+        active_days: 'Active Days'
+    };
+
+    const periodLabels = {
+        daily: 'Daily',
+        weekly: 'Weekly',
+        monthly: 'Monthly',
+        all_time: 'All Time'
+    };
+
+    const fields = rows.map((row, index) => {
+        const globalIndex = (page - 1) * 10 + index;
+        const medals = ['🥇', '🥈', '🥉'];
+        const medal = globalIndex < 3 ? medals[globalIndex] : '';
+        const mention = row.discordId ? `<@${row.discordId}>` : row.username;
+
+        let valueLine;
+        if (metric === 'streak') {
+            valueLine = `${row.value} day${row.value === 1 ? '' : 's'}`;
+        } else if (metric === 'problems_solved') {
+            valueLine = `${row.value} problem${row.value === 1 ? '' : 's'}`;
+        } else {
+            valueLine = `${row.value} day${row.value === 1 ? '' : 's'}`;
+        }
+
+        return {
+            name: `**${globalIndex + 1}. ${row.username}** ${medal}`,
+            value: `👤 ${mention}\n${metricLabels[metric]}: **${valueLine}**`,
+            inline: true
+        };
+    });
+
+    const embed = {
+        color: 0x00d9ff,
+        title: `🏆 Leaderboard – ${metricLabels[metric]} – ${periodLabels[period]}`,
+        description: `Ranking for ${guild?.name || 'this server'}`,
+        fields,
+        footer: {
+            text: `Tracked users: ${totalUsers} • Page ${page} / ${totalPages}` + (metric === 'streak' ? ' • Streaks are all-time values' : '')
+        },
+        timestamp: new Date()
+    };
+
+    return embed;
+}
+
+function buildLeaderboardComponents(guildId, ownerId, metric, period, page, totalPages) {
+    if (totalPages <= 1) {
+        return [];
+    }
+
+    const components = [];
+
+    const row = new ActionRowBuilder();
+
+    const prevPage = Math.max(1, page - 1);
+    const nextPage = Math.min(totalPages, page + 1);
+
+    const prevButton = new ButtonBuilder()
+        .setCustomId(`lb:${guildId}:${ownerId}:${metric}:${period}:${prevPage}`)
+        .setLabel('Previous')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page === 1);
+
+    const nextButton = new ButtonBuilder()
+        .setCustomId(`lb:${guildId}:${ownerId}:${metric}:${period}:${nextPage}`)
+        .setLabel('Next')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page === totalPages);
+
+    row.addComponents(prevButton, nextButton);
+    components.push(row);
+
+    return components;
 }
 
 async function handleBotInfo(interaction) {

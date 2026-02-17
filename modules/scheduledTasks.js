@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const { getUserSubmissions, getDailySlug, getBestDailySubmission, parseDuration, parseMemory } = require('./apiUtils');
+const { getUserSubmissions, getDailySlug, getBestDailySubmission } = require('./apiUtils');
 const { updateUserStats, getGuildConfig } = require('./configManager');
 const { sendTelegramMessage } = require('./telegramBot');
 const { generateSubmissionChart } = require('./chartGenerator');
@@ -9,6 +9,7 @@ const axios = require('axios');
 const logger = require('./logger');
 const Guild = require('./models/Guild');
 const DailySubmission = require('./models/DailySubmission');
+const { sortSubmissionsByPerformance, buildRankedFields } = require('./leaderboardUtils');
 
 // Helper function to safely parse submission timestamp
 function parseSubmissionTime(submission) {
@@ -454,37 +455,9 @@ async function postSubmissionReport(client, guild, problem, submissionsData) {
             return;
         }
 
-        // Sort submissions by runtime, then memory
-        const sortedSubmissions = submissionsData.sort((a, b) => {
-            const runtimeA = parseDuration(a.submission.runtime);
-            const runtimeB = parseDuration(b.submission.runtime);
-
-            if (runtimeA !== runtimeB) {
-                return runtimeA - runtimeB;
-            }
-
-            const memoryA = parseMemory(a.submission.memory);
-            const memoryB = parseMemory(b.submission.memory);
-            return memoryA - memoryB;
-        });
-
-        // Build embed fields
-        const medals = ['🥇', '🥈', '🥉'];
-        const fields = sortedSubmissions.map((data, index) => {
-            const medal = index < 3 ? medals[index] : '';
-            const mention = data.discordId ? `<@${data.discordId}>` : data.username;
-            const submissionUrl = `https://leetcode.com${data.submission.url}`;
-
-            return {
-                name: `**${index + 1}. ${data.username}** ${medal}`,
-                value: `👤 ${mention}\n` +
-                    `🔗 [View Submission](${submissionUrl})\n` +
-                    `💻 ${data.submission.langName}\n` +
-                    `⚡ Runtime: ${data.submission.runtime}\n` +
-                    `🧠 Memory: ${data.submission.memory}`,
-                inline: true
-            };
-        });
+        // Sort submissions by runtime, then memory and build embed fields with medals
+        const sortedSubmissions = sortSubmissionsByPerformance(submissionsData);
+        const fields = buildRankedFields(sortedSubmissions);
 
         const embed = {
             color: 0x00d9ff,
