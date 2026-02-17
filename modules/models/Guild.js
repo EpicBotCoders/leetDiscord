@@ -10,6 +10,10 @@ const guildSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    adminRoleId: {
+        type: String,
+        default: null
+    },
     users: {
         type: Map,
         of: String,

@@ -1,4 +1,4 @@
-const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs, setTelegramToken, toggleTelegramUpdates, getTelegramUser, getAllGuildConfigs } = require('./configManager');
+const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs, setTelegramToken, toggleTelegramUpdates, getTelegramUser, getAllGuildConfigs, setAdminRole, getAdminRole } = require('./configManager');
 const { commandDefinitions } = require('./commandRegistration');
 const { enhancedCheck, getUserCalendar, getBestDailySubmission, getDailySlug } = require('./apiUtils');
 const { updateGuildCronJobs, performDailyCheck } = require('./scheduledTasks');
@@ -9,6 +9,7 @@ const { ChannelType, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBu
 // Cache for autocomplete data - updated only when members or cron jobs are added/removed
 const usernameCache = new Map(); // Map<guildId, string[]> - array of usernames
 const cronJobsCache = new Map(); // Map<guildId, string[]> - array of cron schedule strings
+const adminRoleCache = new Map(); // Map<guildId, string | null> - admin role id per guild
 
 // Helper function to get cached usernames, fetching from DB if not cached
 async function getCachedUsernames(guildId) {
@@ -46,11 +47,51 @@ function invalidateCronJobsCache(guildId) {
     cronJobsCache.delete(guildId);
 }
 
+// Helper to cache admin role for a guild
+function setCachedAdminRole(guildId, roleId) {
+    logger.info(`Setting cached admin role for guild ${guildId} to ${roleId}`);
+    adminRoleCache.set(guildId, roleId || null);
+}
+
+// Helper to get cached admin role, fetching from DB if not cached
+async function getCachedAdminRole(guildId) {
+    if (!adminRoleCache.has(guildId)) {
+        logger.info(`No cached admin role for guild ${guildId}, fetching from DB`);
+        const roleId = await getAdminRole(guildId);
+        adminRoleCache.set(guildId, roleId || null);
+    }
+    return adminRoleCache.get(guildId);
+}
+
+// Helper to check if a member has admin access for config commands
+async function hasAdminAccess(interaction) {
+    const { guildId, memberPermissions, member } = interaction;
+
+    // Fallback: if no guild (shouldn't happen for slash commands) rely on Administrator check
+    if (!guildId) {
+        return memberPermissions?.has('Administrator') || false;
+    }
+
+    const adminRoleId = await getCachedAdminRole(guildId);
+
+    // If no custom admin role configured yet, fall back to Discord Administrator permission
+    if (!adminRoleId) {
+        return memberPermissions?.has('Administrator') || false;
+    }
+
+    // Require the configured admin role
+    if (!member || !member.roles || !member.roles.cache) {
+        return false;
+    }
+
+    return member.roles.cache.has(adminRoleId);
+}
+
 // Initialize cache for all guilds on bot startup
 async function initializeAutocompleteCache() {
     try {
         const guilds = await getAllGuildConfigs();
-        
+
         for (const guild of guilds) {
             // Initialize username cache
             try {
@@ -67,6 +108,15 @@ async function initializeAutocompleteCache() {
                 cronJobsCache.set(guild.guildId, cronJobs);
             } catch (error) {
                 logger.warn(`Failed to initialize cron jobs cache for guild ${guild.guildId}:`, error);
+            }
+
+            // Initialize admin role cache
+            try {
+                if (typeof guild.adminRoleId !== 'undefined') {
+                    adminRoleCache.set(guild.guildId, guild.adminRoleId || null);
+                }
+            } catch (error) {
+                logger.warn(`Failed to initialize admin role cache for guild ${guild.guildId}:`, error);
             }
         }
         
@@ -219,6 +269,9 @@ async function handleInteraction(interaction) {
                 break;
             case 'setchannel':
                 await handleSetChannel(interaction);
+                break;
+            case 'setadminrole':
+                await handleSetAdminRole(interaction);
                 break;
             case 'managecron':
                 await handleManageCron(interaction);
@@ -390,11 +443,11 @@ async function handleAddUser(interaction) {
     const targetUser = interaction.options.getUser('discord_user');
     const discordId = targetUser ? targetUser.id : null;
 
-    // Check permissions - using correct permission flag 'ManageRoles'
-    const hasPermission = interaction.member.permissions.has('ManageRoles') || interaction.member.permissions.has('Administrator');
+    // Check custom admin access for managing other users
+    const isAdmin = await hasAdminAccess(interaction);
 
-    // If no permission, only allow adding self
-    if (!hasPermission) {
+    // If no admin access, only allow adding self
+    if (!isAdmin) {
         // If trying to add someone else's Discord account
         if (targetUser && targetUser.id !== interaction.user.id) {
             await interaction.reply('You can only add yourself to the tracking list. You need Manage Roles permission to add other users.');
@@ -422,11 +475,11 @@ async function handleAddUser(interaction) {
 async function handleRemoveUser(interaction) {
     const username = interaction.options.getString('username');
 
-    // Check permissions - using correct permission flag 'ManageRoles'
-    const hasPermission = interaction.member.permissions.has('ManageRoles') || interaction.member.permissions.has('Administrator');
+    // Check custom admin access for managing other users
+    const isAdmin = await hasAdminAccess(interaction);
 
-    // If no permission, verify they're removing themselves
-    if (!hasPermission) {
+    // If no admin access, verify they're removing themselves
+    if (!isAdmin) {
         const guildUsers = await getGuildUsers(interaction.guildId);
         const userEntry = Object.entries(guildUsers).find(([leetcode]) => leetcode === username);
 
@@ -466,8 +519,10 @@ async function handleListUsers(interaction) {
 }
 
 async function handleSetChannel(interaction) {
-    if (!interaction.memberPermissions.has('ManageChannels')) {
-        await interaction.reply('You need the Manage Channels permission to use this command.');
+    // Require admin role (or Administrator fallback if no role set)
+    const isAdmin = await hasAdminAccess(interaction);
+    if (!isAdmin) {
+        await interaction.reply({ content: 'You need the configured Admin role (or Administrator permission) to use this command.', ephemeral: true });
         return;
     }
 
@@ -526,8 +581,10 @@ async function handleSetChannel(interaction) {
 }
 
 async function handleManageCron(interaction) {
-    if (!interaction.memberPermissions.has('ManageChannels')) {
-        await interaction.reply('You need the Manage Channels permission to use this command.');
+    // Require admin role (or Administrator fallback if no role set)
+    const isAdmin = await hasAdminAccess(interaction);
+    if (!isAdmin) {
+        await interaction.reply({ content: 'You need the configured Admin role (or Administrator permission) to manage cron schedules.', ephemeral: true });
         return;
     }
 
@@ -592,6 +649,33 @@ async function handleManageCron(interaction) {
             }
             break;
         }
+    }
+}
+
+async function handleSetAdminRole(interaction) {
+    // Only users with Discord Administrator permission can configure the admin role itself
+    if (!interaction.memberPermissions.has('Administrator')) {
+        await interaction.reply({ content: 'You need the Discord Administrator permission to configure the Admin role for this bot.', ephemeral: true });
+        return;
+    }
+
+    const role = interaction.options.getRole('role');
+    if (!role) {
+        await interaction.reply({ content: 'Please select a valid role.', ephemeral: true });
+        return;
+    }
+
+    try {
+        const savedRoleId = await setAdminRole(interaction.guildId, role.id);
+        setCachedAdminRole(interaction.guildId, savedRoleId);
+
+        await interaction.reply({
+            content: `✅ Set ${role.toString()} as the Admin role for configuration commands (e.g., /setchannel, /managecron, managing other users).`,
+            ephemeral: true
+        });
+    } catch (error) {
+        logger.error('Error setting admin role:', error);
+        await interaction.reply({ content: 'An error occurred while setting the Admin role.', ephemeral: true });
     }
 }
 
@@ -899,8 +983,10 @@ function getCategoryEmoji(category) {
 }
 
 async function handleForceCheck(interaction) {
-    if (!interaction.memberPermissions.has('Administrator')) {
-        await interaction.reply({ content: 'You need Administrator permissions to use this command.', ephemeral: true });
+    // Treat as a config/admin command: require admin role (or Administrator fallback)
+    const isAdmin = await hasAdminAccess(interaction);
+    if (!isAdmin) {
+        await interaction.reply({ content: 'You need the configured Admin role (or Administrator permission) to use this command.', ephemeral: true });
         return;
     }
 
