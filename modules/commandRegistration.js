@@ -51,6 +51,16 @@ const commandDefinitions = [
                     .setRequired(true))
     },
     {
+        category: 'Setup',
+        data: new SlashCommandBuilder()
+            .setName('setadminrole')
+            .setDescription('Set the Admin role required for configuration commands')
+            .addRoleOption(option =>
+                option.setName('role')
+                    .setDescription('The role to designate as bot admin')
+                    .setRequired(true))
+    },
+    {
         category: 'Scheduling',
         data: new SlashCommandBuilder()
             .setName('managecron')

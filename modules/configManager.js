@@ -16,6 +16,25 @@ async function getAllGuildConfigs() {
     return await Guild.find({});
 }
 
+async function setAdminRole(guildId, roleId) {
+    const guild = await Guild.findOne({ guildId });
+    if (!guild) {
+        throw new Error('Guild not configured');
+    }
+
+    guild.adminRoleId = roleId;
+    await guild.save();
+    return guild.adminRoleId;
+}
+
+async function getAdminRole(guildId) {
+    const guild = await Guild.findOne({ guildId });
+    if (!guild) {
+        return null;
+    }
+    return guild.adminRoleId || null;
+}
+
 async function initializeGuildConfig(guildId, channelId) {
     let guild = await Guild.findOne({ guildId });
     if (!guild) {
@@ -243,27 +262,7 @@ async function updateUserStats(guildId, username) {
     }
 }
 
-module.exports = {
-    loadConfig,
-    initializeGuildConfig,
-    addUser,
-    removeUser,
-    getGuildUsers,
-    getGuildConfig,
-    updateGuildChannel,
-    addCronJob,
-    removeCronJob,
-    listCronJobs,
-    updateUserStats,
-    setTelegramToken,
-    linkTelegramChat,
-    toggleTelegramUpdates,
-    getTelegramUser
-};
-
 const TelegramUser = require('./models/TelegramUser');
-
-// ... imports remain same, add TelegramUser
 
 async function setTelegramToken(guildId, discordId, token) {
     const guild = await Guild.findOne({ guildId });
@@ -419,5 +418,7 @@ module.exports = {
     toggleTelegramUpdates,
     getTelegramUser,
     getConnectionByChatId,
-    getAllGuildConfigs
+    getAllGuildConfigs,
+    setAdminRole,
+    getAdminRole
 };

@@ -31,7 +31,7 @@ async function sendWelcomeMessage(guild) {
             fields: [
                 {
                     name: '🚀 Getting Started',
-                    value: '1. Use `/setchannel` to set where I should post updates\n2. Add users to track with `/adduser`\n3. Use `/check` to manually check progress'
+                    value: '1. Use `/setchannel` to set where I should post updates\n2. (Recommended) Use `/setadminrole` to choose which role can manage bot configuration (cron, channels, user management)\n3. Add users to track with `/adduser`\n4. Use `/check` to manually check progress'
                 },
                 {
                     name: '📢 Features',
