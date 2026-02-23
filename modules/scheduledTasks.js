@@ -4,6 +4,7 @@ const { updateUserStats, getGuildConfig } = require('./configManager');
 const { sendTelegramMessage } = require('./telegramBot');
 const { generateSubmissionChart } = require('./chartGenerator');
 const { initializeStatsPanel } = require('./statsPanel');
+const { initializeServerLeaderboard } = require('./serverLeaderboard');
 const { PermissionsBitField } = require('discord.js');
 const axios = require('axios');
 const logger = require('./logger');
@@ -62,6 +63,9 @@ async function initializeScheduledTasks(client) {
 
         // Initialize stats panel
         await initializeStatsPanel(client);
+
+        // Initialize server leaderboard
+        await initializeServerLeaderboard(client);
     } catch (error) {
         logger.error('Error initializing scheduled tasks:', error);
     }

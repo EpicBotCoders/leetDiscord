@@ -5,8 +5,8 @@ const logger = require('./logger');
 const mongoose = require('mongoose');
 const packageJson = require('../package.json');
 
-const STATS_GUILD_ID = process.env.STATS_GUILD_ID || '1471127554386690232';
-const STATS_CHANNEL_ID = process.env.STATS_CHANNEL_ID || '1471176577415909416';
+const STATS_GUILD_ID = process.env.STATS_GUILD_ID;
+const STATS_CHANNEL_ID = process.env.STATS_CHANNEL_ID;
 const MESSAGE_ID_KEY = 'stats_panel_message_id';
 
 let activeCronJob = null;
