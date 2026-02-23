@@ -158,15 +158,43 @@ async function handleUsernameAutocomplete(interaction) {
     const focusedValue = interaction.options.getFocused().toLowerCase();
 
     try {
-        const usernames = await getCachedUsernames(interaction.guildId);
+        const guildUsers = await getGuildUsers(interaction.guildId);
+        const usernames = Object.keys(guildUsers);
 
-        // Filter usernames based on user input
-        const filtered = usernames
-            .filter(username => username.toLowerCase().includes(focusedValue))
+        // Build autocomplete options with Discord usernames
+        const options = await Promise.all(usernames.map(async (leetcodeUsername) => {
+            const discordId = guildUsers[leetcodeUsername];
+            let displayName = leetcodeUsername;
+
+            // Try to get Discord username if linked
+            if (discordId && interaction.guild) {
+                try {
+                    const member = await interaction.guild.members.fetch(discordId).catch(() => null);
+                    if (member) {
+                        displayName = member.user.displayName || member.user.username;
+                    }
+                } catch (error) {
+                    // Fallback to LeetCode username if fetch fails
+                }
+            }
+
+            return {
+                leetcodeUsername,
+                displayName,
+                discordId
+            };
+        }));
+
+        // Filter based on user input (search both display name and LeetCode username)
+        const filtered = options
+            .filter(opt => 
+                opt.displayName.toLowerCase().includes(focusedValue) ||
+                opt.leetcodeUsername.toLowerCase().includes(focusedValue)
+            )
             .slice(0, 25) // Discord limits to 25 choices
-            .map(username => ({
-                name: username,
-                value: username
+            .map(opt => ({
+                name: opt.displayName,
+                value: opt.leetcodeUsername // Always use LeetCode username as value
             }));
 
         await interaction.respond(filtered);
@@ -446,18 +474,25 @@ async function handleTelegram(interaction) {
 
 async function handleCheck(interaction) {
     await interaction.deferReply();
-    const users = Object.keys(await getGuildUsers(interaction.guildId));
+    const guildUsers = await getGuildUsers(interaction.guildId);
+    const users = Object.keys(guildUsers);
     if (users.length === 0) {
         await interaction.editReply('No users are being tracked in this server.');
         return;
     }
-    const checkResult = await enhancedCheck(users, interaction.client, interaction.channelId);
+    const checkResult = await enhancedCheck(users, interaction.client, interaction.channelId, guildUsers);
     await interaction.editReply(checkResult);
 }
 
 async function handleAddUser(interaction) {
     const username = interaction.options.getString('username');
-    const targetUser = interaction.options.getUser('discord_user');
+    let targetUser = interaction.options.getUser('discord_user');
+    
+    // Default to current user if discord_user is not provided
+    if (!targetUser) {
+        targetUser = interaction.user;
+    }
+    
     const discordId = targetUser ? targetUser.id : null;
 
     // Check custom admin access for managing other users
@@ -1710,11 +1745,27 @@ async function handleDaily(interaction) {
         // Fetch best submission
         const bestSubmission = await getBestDailySubmission(targetUsername, dailySlug);
 
+        // Get Discord username for display
+        const discordId = guildUsers[targetUsername];
+        let displayName = targetUsername;
+        
+        // Try to get Discord username if linked
+        if (discordId && interaction.guild) {
+            try {
+                const member = await interaction.guild.members.fetch(discordId).catch(() => null);
+                if (member) {
+                    displayName = member.user.displayName || member.user.username;
+                }
+            } catch (error) {
+                // Fallback to LeetCode username if fetch fails
+            }
+        }
+
         if (!bestSubmission) {
             const embed = {
                 color: 0xff6b6b,
                 title: '❌ No Submission Found',
-                description: `**${targetUsername}** has not completed today's daily challenge yet.`,
+                description: `**${displayName}** has not completed today's daily challenge yet.`,
                 fields: [
                     {
                         name: '📌 Today\'s Problem',
@@ -1730,12 +1781,13 @@ async function handleDaily(interaction) {
 
         // Create success embed
         const submissionUrl = `https://leetcode.com${bestSubmission.url}`;
-        const mention = guildUsers[targetUsername] ? `<@${guildUsers[targetUsername]}>` : targetUsername;
+        
+        const mention = discordId ? `<@${discordId}>` : targetUsername;
 
         const embed = {
             color: 0x00d9ff,
             title: '🧠 Daily Challenge Completed',
-            description: `Submission details for **${targetUsername}**`,
+            description: `Submission details for **${displayName}**`,
             fields: [
                 {
                     name: '📌 Problem',
