@@ -61,6 +61,12 @@ const commandDefinitions = [
                     .setRequired(true))
     },
     {
+        category: 'Setup',
+        data: new SlashCommandBuilder()
+            .setName('togglebroadcast')
+            .setDescription('Toggle system broadcasts on or off for this server (Server Owner only)')
+    },
+    {
         category: 'Scheduling',
         data: new SlashCommandBuilder()
             .setName('managecron')

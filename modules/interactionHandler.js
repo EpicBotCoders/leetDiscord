@@ -1,4 +1,4 @@
-const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs, setTelegramToken, toggleTelegramUpdates, getTelegramUser, getAllGuildConfigs, setAdminRole, getAdminRole } = require('./configManager');
+const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs, setTelegramToken, toggleTelegramUpdates, getTelegramUser, getAllGuildConfigs, setAdminRole, getAdminRole, toggleBroadcast, getBroadcastEnabled } = require('./configManager');
 const { commandDefinitions } = require('./commandRegistration');
 const { enhancedCheck, getUserCalendar, getBestDailySubmission, getDailySlug } = require('./apiUtils');
 const { updateGuildCronJobs, performDailyCheck } = require('./scheduledTasks');
@@ -341,6 +341,9 @@ async function handleInteraction(interaction) {
                 break;
             case 'broadcast':
                 await handleBroadcast(interaction);
+                break;
+            case 'togglebroadcast':
+                await handleToggleBroadcast(interaction);
                 break;
             default:
                 await interaction.reply('Unknown command.');
@@ -985,6 +988,9 @@ async function handleConfig(interaction) {
             adminRoleDisplay = role ? role.toString() : `<@&${adminRoleId}>`;
         }
 
+        const broadcastEnabled = await getBroadcastEnabled(interaction.guildId);
+        const broadcastStatus = broadcastEnabled ? '✅ **Enabled**' : '❌ **Disabled**';
+
         const announcementChannel = guildConfig.channelId
             ? `<#${guildConfig.channelId}>`
             : 'Not set (use `/setchannel`)';
@@ -1019,10 +1025,15 @@ async function handleConfig(interaction) {
                     name: '🛡️ Admin Role',
                     value: adminRoleDisplay,
                     inline: true
+                },
+                {
+                    name: '📡 System Broadcasts',
+                    value: broadcastStatus,
+                    inline: true
                 }
             ],
             footer: {
-                text: 'Use /setchannel, /managecron, /adduser and /telegram to update this configuration.'
+                text: 'Use /setchannel, /managecron, /adduser, /telegram, and /togglebroadcast to update this configuration.'
             },
             timestamp: new Date()
         };
@@ -1671,6 +1682,11 @@ async function handleBroadcastSubmit(interaction) {
         for (const guildConfig of guilds) {
             if (!guildConfig.channelId) continue;
 
+            // Check if broadcasts are enabled for this guild
+            if (guildConfig.broadcastEnabled === false) {
+                continue; // Skip this guild silently
+            }
+
             try {
                 // Fetch guild to ensure bot is still in it
                 const guild = await interaction.client.guilds.fetch(guildConfig.guildId).catch(() => null);
@@ -1696,6 +1712,48 @@ async function handleBroadcastSubmit(interaction) {
     } catch (error) {
         logger.error('Error in broadcast command:', error);
         await interaction.editReply('An error occurred while sending the broadcast.');
+    }
+}
+
+async function handleToggleBroadcast(interaction) {
+    const guild = interaction.guild;
+    if (!guild) {
+        await interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+        return;
+    }
+
+    // Check if user is the server owner or has admin access
+    const guildOwner = await guild.fetchOwner();
+    const isOwner = interaction.user.id === guildOwner.id;
+    const isAdmin = await hasAdminAccess(interaction);
+
+    if (!isOwner && !isAdmin) {
+        await interaction.reply({ 
+            content: 'Only the server owner or users with the configured Admin role (or Administrator permission) can toggle broadcasts for this server.', 
+            ephemeral: true 
+        });
+        return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+        const guildConfig = await getGuildConfig(interaction.guildId);
+        if (!guildConfig) {
+            await interaction.editReply('This server is not configured yet. Please run `/setchannel` first.');
+            return;
+        }
+
+        const newStatus = await toggleBroadcast(interaction.guildId);
+        const statusText = newStatus ? 'enabled' : 'disabled';
+        const statusEmoji = newStatus ? '✅' : '❌';
+
+        await interaction.editReply({
+            content: `${statusEmoji} System broadcasts are now **${statusText}** for this server.`,
+        });
+    } catch (error) {
+        logger.error('Error in handleToggleBroadcast:', error);
+        await interaction.editReply('An error occurred while toggling broadcasts.');
     }
 }
 

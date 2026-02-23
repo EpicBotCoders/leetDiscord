@@ -35,6 +35,28 @@ async function getAdminRole(guildId) {
     return guild.adminRoleId || null;
 }
 
+async function toggleBroadcast(guildId) {
+    const guild = await Guild.findOne({ guildId });
+    if (!guild) {
+        throw new Error('Guild not configured');
+    }
+
+    // Toggle the broadcastEnabled flag
+    // Treat undefined as true (default enabled)
+    const currentStatus = guild.broadcastEnabled !== false;
+    guild.broadcastEnabled = !currentStatus;
+    await guild.save();
+    return guild.broadcastEnabled;
+}
+
+async function getBroadcastEnabled(guildId) {
+    const guild = await Guild.findOne({ guildId });
+    if (!guild) {
+        return true; // Default to enabled if guild not configured
+    }
+    return guild.broadcastEnabled !== false; // Default to true if not set
+}
+
 async function initializeGuildConfig(guildId, channelId) {
     let guild = await Guild.findOne({ guildId });
     if (!guild) {
@@ -420,5 +442,7 @@ module.exports = {
     getConnectionByChatId,
     getAllGuildConfigs,
     setAdminRole,
-    getAdminRole
+    getAdminRole,
+    toggleBroadcast,
+    getBroadcastEnabled
 };

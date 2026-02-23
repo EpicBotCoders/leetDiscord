@@ -49,7 +49,11 @@ const guildSchema = new mongoose.Schema({
             type: String,
             required: true
         }
-    }]
+    }],
+    broadcastEnabled: {
+        type: Boolean,
+        default: true
+    }
 });
 
 module.exports = mongoose.model('Guild', guildSchema);
