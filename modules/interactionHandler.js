@@ -103,7 +103,7 @@ async function initializeAutocompleteCache() {
             } catch (error) {
                 logger.warn(`Failed to initialize username cache for guild ${guild.guildId}:`, error);
             }
-            
+
             // Initialize cron jobs cache
             try {
                 const cronJobs = await listCronJobs(guild.guildId);
@@ -121,7 +121,7 @@ async function initializeAutocompleteCache() {
                 logger.warn(`Failed to initialize admin role cache for guild ${guild.guildId}:`, error);
             }
         }
-        
+
         logger.info(`Initialized autocomplete cache for ${guilds.length} guild(s)`);
     } catch (error) {
         logger.error('Error initializing autocomplete cache:', error);
@@ -187,7 +187,7 @@ async function handleUsernameAutocomplete(interaction) {
 
         // Filter based on user input (search both display name and LeetCode username)
         const filtered = options
-            .filter(opt => 
+            .filter(opt =>
                 opt.displayName.toLowerCase().includes(focusedValue) ||
                 opt.leetcodeUsername.toLowerCase().includes(focusedValue)
             )
@@ -489,41 +489,32 @@ async function handleCheck(interaction) {
 
 async function handleAddUser(interaction) {
     const username = interaction.options.getString('username');
-    let targetUser = interaction.options.getUser('discord_user');
-    
-    // Default to current user if discord_user is not provided
-    if (!targetUser) {
-        targetUser = interaction.user;
-    }
-    
-    const discordId = targetUser ? targetUser.id : null;
+    const targetUser = interaction.options.getUser('discord_user');
+
+    // Both username and discord_user are now required
+    const discordId = targetUser.id;
 
     // Check custom admin access for managing other users
     const isAdmin = await hasAdminAccess(interaction);
 
-    // If no admin access, only allow adding self
+    // If no admin access, only allow adding themselves
     if (!isAdmin) {
-        // If trying to add someone else's Discord account
-        if (targetUser && targetUser.id !== interaction.user.id) {
-            await interaction.reply('You can only add yourself to the tracking list. You need Manage Roles permission to add other users.');
-            return;
-        }
-        // If no Discord user specified, ensure the leetcode username matches their Discord username
-        if (!targetUser && username.toLowerCase() !== interaction.user.username.toLowerCase()) {
-            await interaction.reply('You can only add yourself to the tracking list. Please use your Discord username as the LeetCode username or mention yourself.');
+        // Non-admin users can only register their own Discord account
+        if (targetUser.id !== interaction.user.id) {
+            await interaction.reply('You can only register your own Discord account. Only administrators can register other users.');
             return;
         }
     }
 
     logger.info(`Adding user: ${username} with Discord ID: ${discordId}`);
     const addResult = await addUser(interaction.guildId, username, discordId);
-    
+
     // Invalidate cache if user was successfully added (check for success message prefix)
     // Success messages start with "Added", error message contains "already being tracked"
     if (addResult.startsWith('Added')) {
         invalidateUsernameCache(interaction.guildId);
     }
-    
+
     await interaction.reply(addResult);
 }
 
@@ -546,13 +537,13 @@ async function handleRemoveUser(interaction) {
 
     logger.info(`Removing user: ${username}`);
     const removeResult = await removeUser(interaction.guildId, username);
-    
+
     // Invalidate cache if user was successfully removed (check for success message prefix)
     // Success message starts with "Removed", error message contains "not in the tracking list"
     if (removeResult.startsWith('Removed')) {
         invalidateUsernameCache(interaction.guildId);
     }
-    
+
     await interaction.reply(removeResult);
 }
 
@@ -651,13 +642,13 @@ async function handleManageCron(interaction) {
             const hours = interaction.options.getInteger('hours');
             const minutes = interaction.options.getInteger('minutes');
             result = await addCronJob(interaction.guildId, hours, minutes);
-            
+
             // Invalidate cache if cron job was successfully added (check for success message prefix)
             // Success message starts with "Added new check time", error message contains "already scheduled"
             if (result.startsWith('Added new check time')) {
                 invalidateCronJobsCache(interaction.guildId);
             }
-            
+
             await interaction.reply(result);
             // Update cron jobs after adding
             await updateGuildCronJobs(interaction.guildId);
@@ -678,13 +669,13 @@ async function handleManageCron(interaction) {
             }
 
             result = await removeCronJob(interaction.guildId, hours, minutes);
-            
+
             // Invalidate cache if cron job was successfully removed (check for success message prefix)
             // Success message starts with "Removed check time", error message contains "No check scheduled"
             if (result.startsWith('Removed check time')) {
                 invalidateCronJobsCache(interaction.guildId);
             }
-            
+
             await interaction.reply(result);
             // Update cron jobs after removing
             await updateGuildCronJobs(interaction.guildId);
@@ -1063,7 +1054,7 @@ function buildCalendarHeatmap(calendarData, rangeDays) {
     }
 
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    today.setUTCHours(0, 0, 0, 0);
 
     const blocks = [];
 
@@ -1129,7 +1120,7 @@ async function handleCalendar(interaction) {
         const heatmap = buildCalendarHeatmap(calendarData, range);
 
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        today.setUTCHours(0, 0, 0, 0);
         const start = new Date(today);
         start.setDate(today.getDate() - (range - 1));
 
@@ -1180,7 +1171,7 @@ async function handleCalendar(interaction) {
 
 function computeDateRange(period) {
     const now = new Date();
-    now.setHours(0, 0, 0, 0);
+    now.setUTCHours(0, 0, 0, 0);
 
     let start = null;
     let end = null;
@@ -1728,9 +1719,9 @@ async function handleToggleBroadcast(interaction) {
     const isAdmin = await hasAdminAccess(interaction);
 
     if (!isOwner && !isAdmin) {
-        await interaction.reply({ 
-            content: 'Only the server owner or users with the configured Admin role (or Administrator permission) can toggle broadcasts for this server.', 
-            ephemeral: true 
+        await interaction.reply({
+            content: 'Only the server owner or users with the configured Admin role (or Administrator permission) can toggle broadcasts for this server.',
+            ephemeral: true
         });
         return;
     }
@@ -1806,7 +1797,7 @@ async function handleDaily(interaction) {
         // Get Discord username for display
         const discordId = guildUsers[targetUsername];
         let displayName = targetUsername;
-        
+
         // Try to get Discord username if linked
         if (discordId && interaction.guild) {
             try {
@@ -1839,7 +1830,7 @@ async function handleDaily(interaction) {
 
         // Create success embed
         const submissionUrl = `https://leetcode.com${bestSubmission.url}`;
-        
+
         const mention = discordId ? `<@${discordId}>` : targetUsername;
 
         const embed = {

@@ -177,7 +177,7 @@ async function enhancedCheck(users, client, channelId, guildUsers = null) {
         };
 
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        today.setUTCHours(0, 0, 0, 0);
 
         // Get guild for fetching Discord members
         let guild = null;
@@ -214,7 +214,6 @@ async function enhancedCheck(users, client, channelId, guildUsers = null) {
                 if (guild) {
                     existingSubmission = await DailySubmission.findOne({
                         guildId: guild.id,
-                        userId,
                         leetcodeUsername: username,
                         questionSlug: dailySlug,
                         date: {
@@ -245,16 +244,24 @@ async function enhancedCheck(users, client, channelId, guildUsers = null) {
                 try {
                     const submissionTime = parseSubmissionTime(todaysSubmission);
                     if (guild) {
-                        await DailySubmission.create({
-                            guildId: guild.id,
-                            userId,
-                            leetcodeUsername: username,
-                            date: today,
-                            questionTitle: problem.title,
-                            questionSlug: dailySlug,
-                            difficulty: problem.difficulty,
-                            submissionTime
-                        });
+                        // Atomic upsert — safe against concurrent writes from other code paths
+                        await DailySubmission.findOneAndUpdate(
+                            {
+                                guildId: guild.id,
+                                leetcodeUsername: username,
+                                questionSlug: dailySlug,
+                                date: today
+                            },
+                            {
+                                $setOnInsert: {
+                                    userId,
+                                    questionTitle: problem.title,
+                                    difficulty: problem.difficulty,
+                                    submissionTime
+                                }
+                            },
+                            { upsert: true, new: true }
+                        );
                     }
                 } catch (error) {
                     logger.error(`Error recording submission for ${username}:`, error);

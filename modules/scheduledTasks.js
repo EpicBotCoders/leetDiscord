@@ -144,7 +144,7 @@ async function performDailyCheck(client, guildId, channelId) {
 
         const incompleteUsers = [];
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        today.setUTCHours(0, 0, 0, 0);
 
         for (const [username, discordId] of Object.entries(users)) {
             try {
@@ -168,32 +168,25 @@ async function performDailyCheck(client, guildId, channelId) {
 
                     if (todaysSubmission) {
                         hasCompleted = true;
-                        // Check if we already have a submission record for today
-                        const existingSubmission = await DailySubmission.findOne({
-                            guildId,
-                            userId: discordId || username,
-                            leetcodeUsername: username,
-                            questionSlug: dailySlug,
-                            date: {
-                                $gte: today,
-                                $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
-                            }
-                        });
-
-                        // Only create new submission if one doesn't exist
-                        if (!existingSubmission) {
-                            const submissionTime = parseSubmissionTime(todaysSubmission);
-                            await DailySubmission.create({
+                        // Atomic upsert — safe against concurrent writes from other code paths
+                        const submissionTime = parseSubmissionTime(todaysSubmission);
+                        await DailySubmission.findOneAndUpdate(
+                            {
                                 guildId,
-                                userId: discordId || username,
                                 leetcodeUsername: username,
-                                date: today,
-                                questionTitle: problem.title,
                                 questionSlug: dailySlug,
-                                difficulty: problem.difficulty,
-                                submissionTime
-                            });
-                        }
+                                date: today
+                            },
+                            {
+                                $setOnInsert: {
+                                    userId: discordId || username,
+                                    questionTitle: problem.title,
+                                    difficulty: problem.difficulty,
+                                    submissionTime
+                                }
+                            },
+                            { upsert: true, new: true }
+                        );
                     }
                 }
 
@@ -352,7 +345,7 @@ async function performSilentCheck(client) {
         }
 
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        today.setUTCHours(0, 0, 0, 0);
 
         // Get all guilds from MongoDB
         const guilds = await Guild.find({});
@@ -384,31 +377,26 @@ async function performSilentCheck(client) {
                         );
 
                         if (todaysSubmission) {
-                            // Check if we already have a submission record for today
-                            const existingSubmission = await DailySubmission.findOne({
-                                guildId: guild.guildId,
-                                userId: discordId || username,
-                                leetcodeUsername: username,
-                                questionSlug: dailySlug,
-                                date: {
-                                    $gte: today,
-                                    $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
-                                }
-                            });
-
-                            // Only create new submission if one doesn't exist
-                            if (!existingSubmission) {
-                                const submissionTime = parseSubmissionTime(todaysSubmission);
-                                await DailySubmission.create({
+                            // Atomic upsert — safe against concurrent writes from other code paths
+                            const submissionTime = parseSubmissionTime(todaysSubmission);
+                            const result = await DailySubmission.findOneAndUpdate(
+                                {
                                     guildId: guild.guildId,
-                                    userId: discordId || username,
                                     leetcodeUsername: username,
-                                    date: today,
-                                    questionTitle: problem.title,
                                     questionSlug: dailySlug,
-                                    difficulty: problem.difficulty,
-                                    submissionTime
-                                });
+                                    date: today
+                                },
+                                {
+                                    $setOnInsert: {
+                                        userId: discordId || username,
+                                        questionTitle: problem.title,
+                                        difficulty: problem.difficulty,
+                                        submissionTime
+                                    }
+                                },
+                                { upsert: true, new: true, rawResult: true }
+                            );
+                            if (result.lastErrorObject?.upserted) {
                                 logger.info(`Silent check: Recorded submission for ${username} in guild ${guild.guildId}`);
                             }
 

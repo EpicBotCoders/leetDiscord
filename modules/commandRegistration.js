@@ -21,7 +21,7 @@ const commandDefinitions = [
             .addUserOption(option =>
                 option.setName('discord_user')
                     .setDescription('The Discord user to associate with this LeetCode account')
-                    .setRequired(false))
+                    .setRequired(true))
     },
     {
         category: 'User Management',
