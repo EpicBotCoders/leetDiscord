@@ -119,9 +119,13 @@ async function calculateMetrics(client) {
         // Total active users (sum of users tracked across all guilds)
         const guilds = await Guild.find({});
         let totalUsers = 0;
+        let contestReminderEnabledCount = 0;
         for (const guild of guilds) {
             if (guild.users) {
                 totalUsers += guild.users.size;
+            }
+            if (guild.contestReminderEnabled) {
+                contestReminderEnabledCount++;
             }
         }
 
@@ -143,7 +147,8 @@ async function calculateMetrics(client) {
             totalUsers,
             uptime,
             version,
-            status
+            status,
+            contestReminderEnabledCount
         };
     } catch (error) {
         logger.error('Error calculating metrics:', error);
@@ -189,6 +194,11 @@ function buildStatsEmbed(metrics) {
                 name: '👥 Active Users',
                 value: metrics.totalUsers.toString(),
                 inline: true
+            },
+            {
+                name: '⏰ Contest Reminders Enabled',
+                value: `${metrics.contestReminderEnabledCount} / ${metrics.totalGuilds}`,
+                inline: true
             }
         ],
         footer: {
@@ -229,8 +239,46 @@ function stopStatsPanel() {
     }
 }
 
+/**
+ * Force update the stats panel to offline status
+ */
+async function forceOfflineStatsPanel(client) {
+    try {
+        // Calculate metrics with offline status
+        const metrics = await calculateMetrics(client);
+        metrics.status = '🔴 Offline';
+        // Build the embed
+        const embed = buildStatsEmbed(metrics);
+
+        // Fetch the target guild and channel
+        const guild = await client.guilds.fetch(STATS_GUILD_ID);
+        if (!guild) return;
+        const channel = await guild.channels.fetch(STATS_CHANNEL_ID);
+        if (!channel) return;
+
+        // Get stored message ID
+        const configDoc = await SystemConfig.findOne({ key: MESSAGE_ID_KEY });
+        const storedMessageId = configDoc?.value;
+        let message = null;
+        if (storedMessageId) {
+            try {
+                message = await channel.messages.fetch(storedMessageId);
+                await message.edit({ embeds: [embed] });
+            } catch {
+                message = null;
+            }
+        }
+        if (!message) {
+            await channel.send({ embeds: [embed] });
+        }
+    } catch (e) {
+        logger.error('Failed to force stats panel offline:', e);
+    }
+}
+
 module.exports = {
     initializeStatsPanel,
     updateStatsPanel,
-    stopStatsPanel
+    stopStatsPanel,
+    forceOfflineStatsPanel
 };

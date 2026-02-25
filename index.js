@@ -8,6 +8,7 @@ const { loadConfig } = require('./modules/configManager');
 const { connectDB } = require('./modules/models/db');
 const logger = require('./modules/logger');
 const { initializeScheduledTasks, stopAllCronJobs } = require('./modules/scheduledTasks');
+const { forceOfflineStatsPanel } = require('./modules/statsPanel');
 const { startTelegramBot, stopTelegramBot } = require('./modules/telegramBot');
 const http = require('http');
 
@@ -228,6 +229,12 @@ function setupGracefulShutdown(client, server) {
         logger.info(`\n${signal} received. Starting graceful shutdown...`);
 
         try {
+            // Immediately update stats panel to offline
+            if (client) {
+                logger.info('Updating stats panel to offline...');
+                await forceOfflineStatsPanel(client);
+            }
+
             // Give ongoing operations a chance to complete
             logger.info('Waiting for ongoing operations to complete...');
             await new Promise(resolve => setTimeout(resolve, 2000));
@@ -246,7 +253,6 @@ function setupGracefulShutdown(client, server) {
                 logger.info('Discord client disconnected');
             }
 
-            // Close MongoDB connection
             // Close MongoDB connection
             const mongoose = require('mongoose');
             if (mongoose.connection.readyState !== 0) {
