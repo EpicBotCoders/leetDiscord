@@ -24,4 +24,16 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
+# Export commands and stage the commands.json file
+echo "Exporting commands..."
+node scripts/export-commands.js
+
+if [ $? -eq 0 ]; then
+  echo "Staging generated commands.json..."
+  git add frontend/public/commands.json
+else
+  echo "Failed to export commands."
+  exit 1
+fi
+
 exit 0

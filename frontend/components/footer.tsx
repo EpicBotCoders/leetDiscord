@@ -41,9 +41,7 @@ export function Footer() {
             <span>Discord</span>
           </Link>
           <Link
-            href="https://github.com/surajstaabi/leetDiscord#readme"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/docs"
             className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
             aria-label="Documentation"
           >

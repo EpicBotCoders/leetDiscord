@@ -53,9 +53,7 @@ export function Navbar() {
             <span className="hidden sm:inline">Support</span>
           </Link>
           <Link
-            href="https://github.com/surajstaabi/leetDiscord#readme"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/docs"
             className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
           >
             <BookOpen className="h-4 w-4" />

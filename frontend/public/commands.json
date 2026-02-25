@@ -1,0 +1,375 @@
+[
+  {
+    "name": "check",
+    "description": "Run a manual check of today's LeetCode challenge status",
+    "options": [],
+    "category": "Monitoring",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "adduser",
+    "description": "Add a LeetCode username to track",
+    "options": [
+      {
+        "type": 3,
+        "name": "username",
+        "description": "The LeetCode username to add",
+        "required": true
+      },
+      {
+        "name": "discord_user",
+        "description": "The Discord user to associate with this LeetCode account",
+        "required": true,
+        "type": 6
+      }
+    ],
+    "category": "User Management",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "removeuser",
+    "description": "Remove a LeetCode username from tracking",
+    "options": [
+      {
+        "autocomplete": true,
+        "type": 3,
+        "name": "username",
+        "description": "The LeetCode username to remove",
+        "required": true
+      }
+    ],
+    "category": "User Management",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "listusers",
+    "description": "List all tracked LeetCode usernames",
+    "options": [],
+    "category": "User Management",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "setchannel",
+    "description": "Set the announcement channel for this server",
+    "options": [
+      {
+        "name": "channel",
+        "description": "The channel to send announcements to",
+        "required": true,
+        "type": 7
+      }
+    ],
+    "category": "Setup",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "setadminrole",
+    "description": "Set the Admin role required for configuration commands",
+    "options": [
+      {
+        "name": "role",
+        "description": "The role to designate as bot admin",
+        "required": true,
+        "type": 8
+      }
+    ],
+    "category": "Setup",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "togglebroadcast",
+    "description": "Toggle system broadcasts on or off for this server (Server Owner only)",
+    "options": [],
+    "category": "Setup",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "managecron",
+    "description": "Manage cron schedules for LeetCode checks",
+    "options": [
+      {
+        "type": 1,
+        "name": "add",
+        "description": "Add a new check time",
+        "options": [
+          {
+            "max_value": 23,
+            "min_value": 0,
+            "type": 4,
+            "name": "hours",
+            "description": "Hour in 24H format (0-23)",
+            "required": true
+          },
+          {
+            "max_value": 59,
+            "min_value": 0,
+            "type": 4,
+            "name": "minutes",
+            "description": "Minutes (0-59)",
+            "required": true
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "remove",
+        "description": "Remove an existing check time",
+        "options": [
+          {
+            "autocomplete": true,
+            "type": 3,
+            "name": "time",
+            "description": "Select a scheduled time to remove",
+            "required": true
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "list",
+        "description": "List all scheduled check times",
+        "options": []
+      }
+    ],
+    "category": "Scheduling",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "leetstats",
+    "description": "View LeetCode statistics",
+    "options": [
+      {
+        "name": "show_all",
+        "description": "Show stats for all registered members (default: your own stats)",
+        "required": false,
+        "type": 5
+      }
+    ],
+    "category": "Monitoring",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "config",
+    "description": "Show this server's LeetCode bot configuration",
+    "options": [],
+    "category": "Setup",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "calendar",
+    "description": "Show recent LeetCode activity as a compact calendar",
+    "options": [
+      {
+        "type": 4,
+        "choices": [
+          {
+            "name": "Last 7 days",
+            "value": 7
+          },
+          {
+            "name": "Last 30 days",
+            "value": 30
+          },
+          {
+            "name": "Last 90 days",
+            "value": 90
+          }
+        ],
+        "name": "range",
+        "description": "Number of days to show",
+        "required": false
+      },
+      {
+        "autocomplete": true,
+        "type": 3,
+        "name": "username",
+        "description": "LeetCode username to view (defaults to you)",
+        "required": false
+      }
+    ],
+    "category": "Monitoring",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "leaderboard",
+    "description": "Show a LeetCode leaderboard for this server",
+    "options": [
+      {
+        "type": 3,
+        "choices": [
+          {
+            "name": "Daily",
+            "value": "daily"
+          },
+          {
+            "name": "Weekly",
+            "value": "weekly"
+          },
+          {
+            "name": "Monthly",
+            "value": "monthly"
+          },
+          {
+            "name": "All Time",
+            "value": "all_time"
+          }
+        ],
+        "name": "period",
+        "description": "Time window for the leaderboard",
+        "required": false
+      },
+      {
+        "type": 3,
+        "choices": [
+          {
+            "name": "Current Streak",
+            "value": "streak"
+          },
+          {
+            "name": "Problems Solved",
+            "value": "problems_solved"
+          },
+          {
+            "name": "Active Days",
+            "value": "active_days"
+          }
+        ],
+        "name": "metric",
+        "description": "Metric to rank users by",
+        "required": false
+      },
+      {
+        "name": "ephemeral",
+        "description": "Show leaderboard only to you (default: false)",
+        "required": false,
+        "type": 5
+      }
+    ],
+    "category": "Monitoring",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "botinfo",
+    "description": "Display information about the bot and its GitHub repository",
+    "options": [],
+    "category": "Information",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "help",
+    "description": "Display all available commands and their usage",
+    "options": [],
+    "category": "Information",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "telegram",
+    "description": "Manage Telegram notifications",
+    "options": [
+      {
+        "type": 1,
+        "name": "connect",
+        "description": "Link your Telegram account to receive notifications",
+        "options": []
+      },
+      {
+        "type": 1,
+        "name": "toggle",
+        "description": "Enable or disable Telegram notifications",
+        "options": []
+      },
+      {
+        "type": 1,
+        "name": "status",
+        "description": "Check your Telegram connection status",
+        "options": []
+      }
+    ],
+    "category": "Notifications",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "daily",
+    "description": "Check daily challenge submission status",
+    "options": [
+      {
+        "autocomplete": true,
+        "type": 3,
+        "name": "username",
+        "description": "LeetCode username to check (defaults to you)",
+        "required": false
+      }
+    ],
+    "category": "Monitoring",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "forcecheck",
+    "description": "Manually trigger the daily check for this server (Admin only)",
+    "options": [],
+    "category": "Admin",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "broadcast",
+    "description": "Broadcast a message to all guilds",
+    "options": [
+      {
+        "type": 3,
+        "choices": [
+          {
+            "name": "Info",
+            "value": "info"
+          },
+          {
+            "name": "Warn",
+            "value": "warn"
+          },
+          {
+            "name": "Alert",
+            "value": "alert"
+          }
+        ],
+        "name": "type",
+        "description": "Type of broadcast",
+        "required": true
+      }
+    ],
+    "category": "Admin",
+    "adminOnly": false,
+    "hidden": true
+  },
+  {
+    "name": "togglecontestreminder",
+    "description": "Enable or disable LeetCode contest reminders for this server",
+    "options": [],
+    "category": "Setup",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
+    "name": "contest",
+    "description": "Show details of the next LeetCode contest",
+    "options": [],
+    "category": "Info",
+    "adminOnly": false,
+    "hidden": false
+  }
+]
