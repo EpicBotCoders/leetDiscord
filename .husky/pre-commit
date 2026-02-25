@@ -1,0 +1,27 @@
+#!/bin/bash
+set -e
+
+# Get package.json versions
+old_version=$(git show HEAD:package.json | grep '"version"' | sed -E 's/.*"version": ?"([^"]+)".*/\1/')
+new_version=$(grep '"version"' package.json | sed -E 's/.*"version": ?"([^"]+)".*/\1/')
+
+# Compare using simple semver check (major.minor.patch)
+awk -v old="$old_version" -v new="$new_version" '
+  BEGIN {
+    split(old, o, ".");
+    split(new, n, ".");
+    if (n[1] < o[1] || (n[1] == o[1] && n[2] < o[2]) || 
+        (n[1] == o[1] && n[2] == o[2] && n[3] <= o[3])) {
+      print "Version must be greater than '"'"'$old_version'"'"' (current).";
+      exit 1;
+    }
+    exit 0;
+  }
+'
+
+if [ $? -ne 0 ]; then
+  echo "Update package.json version before committing."
+  exit 1
+fi
+
+exit 0
