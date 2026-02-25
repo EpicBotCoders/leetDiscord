@@ -1,6 +1,6 @@
 {
   "name": "leetdiscord",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "main": "index.js",
   "scripts": {
     "build": "npm install && cd frontend && npm install --legacy-peer-deps && npm run build",
@@ -9,7 +9,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "eslint .",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "keywords": [],
   "author": "",
