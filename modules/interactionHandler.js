@@ -1757,6 +1757,9 @@ async function handleBroadcastSubmit(interaction) {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
+    // Import BroadcastLog model
+    const BroadcastLog = require('./models/BroadcastLog');
+
     try {
         const guilds = await getAllGuildConfigs();
         let successCount = 0;
@@ -1789,6 +1792,21 @@ async function handleBroadcastSubmit(interaction) {
                 logger.warn(`Failed to send broadcast to guild ${guildConfig.guildId}:`, error.message);
                 failCount++;
             }
+        }
+
+        // Log the broadcast in the database
+        try {
+            await BroadcastLog.create({
+                senderId: interaction.user.id,
+                senderUsername: interaction.user.username,
+                type,
+                message: messageContent,
+                successCount,
+                failCount,
+                sentAt: new Date()
+            });
+        } catch (logErr) {
+            logger.warn('Failed to log broadcast:', logErr);
         }
 
         await interaction.editReply(`Broadcast sent successfully to ${successCount} guilds. Failed for ${failCount} guilds.`);
