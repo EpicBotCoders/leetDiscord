@@ -1,3 +1,30 @@
+// In-memory cache for contests
+const contestCache = {
+    value: null,
+    expiry: 0
+};
+
+// Fetch upcoming LeetCode contests with cache
+async function getLeetCodeContests() {
+    const now = Date.now();
+    // Cache for 1 hour
+    const CACHE_TTL = 60 * 60 * 1000;
+    if (contestCache.value && contestCache.expiry > now) {
+        logger.info('Using cached LeetCode contest data');
+        return contestCache.value;
+    }
+    try {
+        logger.info('Fetching LeetCode contest data.');
+        const res = await axios.get('https://leetcode-api-pied.vercel.app/contests');
+        contestCache.value = res.data;
+        contestCache.expiry = now + CACHE_TTL;
+        logger.debug('Fetched contest data:', res.data);
+        return res.data;
+    } catch (error) {
+        logger.error('Error fetching LeetCode contest data:', error);
+        throw error;
+    }
+}
 const axios = require('axios');
 const logger = require('./logger');
 const DailySubmission = require('./models/DailySubmission');
@@ -360,5 +387,6 @@ module.exports = {
     enhancedCheck,
     getBestDailySubmission,
     parseDuration,
-    parseMemory
+    parseMemory,
+    getLeetCodeContests
 };

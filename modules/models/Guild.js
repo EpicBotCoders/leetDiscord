@@ -53,6 +53,10 @@ const guildSchema = new mongoose.Schema({
     broadcastEnabled: {
         type: Boolean,
         default: true
+    },
+    contestReminderEnabled: {
+        type: Boolean,
+        default: false
     }
 });
 

@@ -78,6 +78,7 @@ async function main() {
                 await initializeScheduledTasks(client);
                 await initializeAutocompleteCache();
                 logger.info('Bot initialization complete');
+                logger.info("============ BOT IS READY ============")
             } catch (error) {
                 logger.error('Error during bot initialization:', error);
             }

@@ -1,6 +1,22 @@
+
 const { REST, Routes, SlashCommandBuilder } = require('discord.js');
 require('dotenv').config();
 const logger = require('./logger');
+// LeetCode Contest Reminder commands
+const contestCommands = [
+    {
+        category: 'Setup',
+        data: new SlashCommandBuilder()
+            .setName('togglecontestreminder')
+            .setDescription('Enable or disable LeetCode contest reminders for this server')
+    },
+    {
+        category: 'Info',
+        data: new SlashCommandBuilder()
+            .setName('contest')
+            .setDescription('Show details of the next LeetCode contest')
+    }
+];
 
 const commandDefinitions = [
     {
@@ -230,7 +246,7 @@ const commandDefinitions = [
                         { name: 'Alert', value: 'alert' }
                     ))
     }
-];
+].concat(contestCommands);
 
 async function registerCommands(clientId) {
     if (!clientId) {

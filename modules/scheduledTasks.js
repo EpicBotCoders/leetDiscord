@@ -1,3 +1,60 @@
+const { getLeetCodeContests } = require('./apiUtils');
+const { formatLeetCodeContestEmbed } = require('./interactionHandler');
+// Schedule contest reminder for all opted-in guilds (every Friday 16:00 UTC)
+function scheduleContestReminderJob(client) {
+    const schedule = '0 16 * * 5'; // Friday 16:00 UTC
+    const jobKey = 'contest-reminder';
+    if (activeCronJobs.has(jobKey)) {
+        activeCronJobs.get(jobKey).stop();
+        activeCronJobs.delete(jobKey);
+    }
+    logger.info('Scheduling LeetCode contest reminder job for Fridays at 16:00 UTC');
+    const job = cron.schedule(schedule, async () => {
+        logger.info('Running LeetCode contest reminder broadcast');
+        try {
+            const data = await getLeetCodeContests();
+            if (!data || !data.topTwoContests || data.topTwoContests.length === 0) {
+                logger.warn('No upcoming LeetCode contests found for reminder broadcast.');
+                return;
+            }
+            // Collect all upcoming contests, sorted by start time
+            const now = Math.floor(Date.now() / 1000);
+            const upcomingContests = data.topTwoContests
+                .filter(c => c.startTime > now)
+                .sort((a, b) => a.startTime - b.startTime);
+            if (upcomingContests.length === 0) {
+                logger.warn('No upcoming LeetCode contests found for reminder broadcast.');
+                return;
+            }
+            const embeds = upcomingContests.map((contest, i) =>
+                formatLeetCodeContestEmbed(contest, i, upcomingContests.length)
+            );
+            const guilds = await Guild.find({ contestReminderEnabled: true });
+            for (const guild of guilds) {
+                try {
+                    const channel = await client.channels.fetch(guild.channelId).catch(() => null);
+                    if (!channel) {
+                        logger.warn(`Contest reminder: Channel ${guild.channelId} not found for guild ${guild.guildId}`);
+                        continue;
+                    }
+                    const botMember = await channel.guild.members.fetchMe();
+                    const permissions = channel.permissionsFor(botMember);
+                    if (!permissions?.has(PermissionsBitField.Flags.SendMessages)) {
+                        logger.warn(`Contest reminder: No permission to send messages in channel ${channel.id} for guild ${guild.guildId}`);
+                        continue;
+                    }
+                    await channel.send({ embeds });
+                    logger.info(`Sent contest reminder (${upcomingContests.length} contest(s)) to guild ${guild.guildId}`);
+                } catch (err) {
+                    logger.error(`Error sending contest reminder to guild ${guild.guildId}:`, err);
+                }
+            }
+        } catch (error) {
+            logger.error('Error in contest reminder broadcast:', error);
+        }
+    }, { timezone: 'UTC' });
+    activeCronJobs.set(jobKey, job);
+}
 const cron = require('node-cron');
 const { getUserSubmissions, getDailySlug, getBestDailySubmission } = require('./apiUtils');
 const { updateUserStats, getGuildConfig } = require('./configManager');
@@ -57,6 +114,9 @@ async function initializeScheduledTasks(client) {
             });
         }
         logger.info('Scheduled tasks initialized successfully');
+
+        // Schedule contest reminder job
+        scheduleContestReminderJob(client);
 
         // Initialize silent daily check
         await scheduleSilentDailyCheck(client);

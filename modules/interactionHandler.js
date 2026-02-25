@@ -1,10 +1,101 @@
+const { getLeetCodeContests } = require('./apiUtils');
+const Guild = require('./models/Guild');
+async function handleToggleContestReminder(interaction) {
+    if (!(await hasAdminAccess(interaction))) {
+        await interaction.reply({ content: '❌ Only admins can toggle contest reminders.', flags: MessageFlags.Ephemeral });
+        return;
+    }
+    const guildId = interaction.guildId;
+    let guild = await Guild.findOne({ guildId });
+    if (!guild) {
+        await interaction.reply({ content: '❌ This server is not configured yet. Please run /setchannel first.', flags: MessageFlags.Ephemeral });
+        return;
+    }
+    guild.contestReminderEnabled = !guild.contestReminderEnabled;
+    await guild.save();
+    await interaction.reply({ content: `Contest reminders are now **${guild.contestReminderEnabled ? 'enabled' : 'disabled'}** for this server.`, flags: MessageFlags.Ephemeral });
+}
+
+async function handleContest(interaction) {
+    await interaction.deferReply();
+    try {
+        const data = await getLeetCodeContests();
+        if (!data || !data.topTwoContests || data.topTwoContests.length === 0) {
+            await interaction.editReply('No upcoming LeetCode contests found.');
+            return;
+        }
+        // Filter all upcoming contests (startTime in the future)
+        const now = Math.floor(Date.now() / 1000);
+        const upcomingContests = data.topTwoContests
+            .filter(c => c.startTime > now)
+            .sort((a, b) => a.startTime - b.startTime); // earliest first
+        if (upcomingContests.length === 0) {
+            await interaction.editReply('No upcoming LeetCode contests found.');
+            return;
+        }
+        const embeds = upcomingContests.map((contest, i) => formatLeetCodeContestEmbed(contest, i, upcomingContests.length));
+        await interaction.editReply({ embeds });
+    } catch (error) {
+        logger.error('Error fetching contest data:', error);
+        await interaction.editReply('❌ Failed to fetch contest details. Please try again later.');
+    }
+}
+// Utility to format LeetCode contest data into a Discord embed.
+// index = 0-based position among the list being rendered, total = total count.
+function formatLeetCodeContestEmbed(contest, index = 0, total = 1) {
+    const durationHours = Math.floor(contest.duration / 3600);
+    const durationMinutes = Math.floor((contest.duration % 3600) / 60);
+    const durationStr = durationMinutes > 0
+        ? `${durationHours}h ${durationMinutes}m`
+        : `${durationHours}h`;
+
+    // Give weekly and biweekly contests distinct colours
+    const isBiweekly = contest.title.toLowerCase().includes('biweekly');
+    const color = isBiweekly ? 0x7B68EE : 0xFFA116; // purple for biweekly, orange for weekly
+
+    // Heading changes based on position in the list
+    const label = total > 1
+        ? (index === 0 ? '🔜 Next Up' : `📅 Also Upcoming (${index + 1} of ${total})`)
+        : '🔜 Next Up';
+
+    return {
+        color,
+        title: `📝 ${contest.title}`,
+        description:
+            `**${label}** — LeetCode Contest\n\n` +
+            `**Starts:** <t:${contest.startTime}:F> (<t:${contest.startTime}:R>)\n` +
+            `**Duration:** ${durationStr}\n` +
+            `**[Register / View Details](https://leetcode.com/contest/${contest.titleSlug})**`,
+        fields: [
+            {
+                name: '⏰ Start Time',
+                value: `<t:${contest.startTime}:F>`,
+                inline: true
+            },
+            {
+                name: '⌛ Duration',
+                value: durationStr,
+                inline: true
+            },
+            {
+                name: '🔗 Contest Page',
+                value: `[leetcode.com/contest/${contest.titleSlug}](https://leetcode.com/contest/${contest.titleSlug})`,
+                inline: true
+            }
+        ],
+        timestamp: new Date(),
+        footer: {
+            text: `LeetCode Contest Reminder${total > 1 ? ` • ${index + 1} of ${total}` : ''}`
+        }
+    };
+}
 const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs, setTelegramToken, toggleTelegramUpdates, getTelegramUser, getAllGuildConfigs, setAdminRole, getAdminRole, toggleBroadcast, getBroadcastEnabled } = require('./configManager');
 const { commandDefinitions } = require('./commandRegistration');
 const { enhancedCheck, getUserCalendar, getBestDailySubmission, getDailySlug } = require('./apiUtils');
 const { updateGuildCronJobs, performDailyCheck } = require('./scheduledTasks');
 const logger = require('./logger');
 const { v4: uuidv4 } = require('uuid');
-const { ChannelType, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { ChannelType, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const TelegramUser = require('./models/TelegramUser');
 const DailySubmission = require('./models/DailySubmission');
 
@@ -345,6 +436,12 @@ async function handleInteraction(interaction) {
             case 'togglebroadcast':
                 await handleToggleBroadcast(interaction);
                 break;
+            case 'togglecontestreminder':
+                await handleToggleContestReminder(interaction);
+                break;
+            case 'contest':
+                await handleContest(interaction);
+                break;
             default:
                 await interaction.reply('Unknown command.');
         }
@@ -379,7 +476,7 @@ async function handleTelegram(interaction) {
     const subcommand = interaction.options.getSubcommand();
 
     if (subcommand === 'connect') {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         try {
             // Check if user is registered and already connected
@@ -397,7 +494,6 @@ async function handleTelegram(interaction) {
                 if (telegramUser && telegramUser.telegramChatId) {
                     await interaction.editReply({
                         content: `✅ You are already connected to Telegram as **${targetUsername}**.\nTo check your status, use the \`/telegram status\` command.`,
-                        ephemeral: true
                     });
                     return;
                 }
@@ -411,26 +507,24 @@ async function handleTelegram(interaction) {
 
             await interaction.editReply({
                 content: `Click this link to connect your Telegram account: ${link}\n\nThis link is valid for 15 minutes.`,
-                ephemeral: true
             });
         } catch (error) {
             logger.error('Error generating Telegram link:', error);
             await interaction.editReply({
                 content: `Error: ${error.message}. Warning: You must be registered with /adduser first.`,
-                ephemeral: true
             });
         }
     } else if (subcommand === 'toggle') {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         try {
             const result = await toggleTelegramUpdates(interaction.guildId, interaction.user.id);
-            await interaction.editReply({ content: result.message, ephemeral: true });
+            await interaction.editReply({ content: result.message });
         } catch (error) {
             logger.error('Error toggling Telegram updates:', error);
-            await interaction.editReply({ content: 'An error occurred while toggling updates.', ephemeral: true });
+            await interaction.editReply({ content: 'An error occurred while toggling updates.' });
         }
     } else if (subcommand === 'status') {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         try {
             // We need to resolve username from discord ID first to get status
             // This is a bit round-about, maybe configManager should have a getTelegramUserByDiscordId
@@ -450,7 +544,7 @@ async function handleTelegram(interaction) {
             }
 
             if (!targetUsername) {
-                await interaction.editReply({ content: 'You are not registered in this server.', ephemeral: true });
+                await interaction.editReply({ content: 'You are not registered in this server.' });
                 return;
             }
 
@@ -458,17 +552,15 @@ async function handleTelegram(interaction) {
             if (telegramUser && telegramUser.telegramChatId) {
                 await interaction.editReply({
                     content: `✅ **Telegram Connected Globally**\n\n👤 **LeetCode Account**: ${targetUsername}\n🔔 **Notifications**: ${telegramUser.isEnabled ? 'Enabled' : 'Disabled'}\n\nYour account is linked globally. You will receive notifications for this server and any other servers where you are tracked.`,
-                    ephemeral: true
                 });
             } else {
                 await interaction.editReply({
                     content: '❌ **Telegram Not Connected**\n\nUse `/telegram connect` to link your account. This will link your account globally for all servers.',
-                    ephemeral: true
                 });
             }
         } catch (error) {
             logger.error('Error checking Telegram status:', error);
-            await interaction.editReply({ content: 'An error occurred.', ephemeral: true });
+            await interaction.editReply({ content: 'An error occurred.' });
         }
     }
 }
@@ -568,7 +660,7 @@ async function handleSetChannel(interaction) {
     // Require admin role (or Administrator fallback if no role set)
     const isAdmin = await hasAdminAccess(interaction);
     if (!isAdmin) {
-        await interaction.reply({ content: 'You need the configured Admin role (or Administrator permission) to use this command.', ephemeral: true });
+        await interaction.reply({ content: 'You need the configured Admin role (or Administrator permission) to use this command.', flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -630,7 +722,7 @@ async function handleManageCron(interaction) {
     // Require admin role (or Administrator fallback if no role set)
     const isAdmin = await hasAdminAccess(interaction);
     if (!isAdmin) {
-        await interaction.reply({ content: 'You need the configured Admin role (or Administrator permission) to manage cron schedules.', ephemeral: true });
+        await interaction.reply({ content: 'You need the configured Admin role (or Administrator permission) to manage cron schedules.', flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -701,13 +793,13 @@ async function handleManageCron(interaction) {
 async function handleSetAdminRole(interaction) {
     // Only users with Discord Administrator permission can configure the admin role itself
     if (!interaction.memberPermissions.has('Administrator')) {
-        await interaction.reply({ content: 'You need the Discord Administrator permission to configure the Admin role for this bot.', ephemeral: true });
+        await interaction.reply({ content: 'You need the Discord Administrator permission to configure the Admin role for this bot.', flags: MessageFlags.Ephemeral });
         return;
     }
 
     const role = interaction.options.getRole('role');
     if (!role) {
-        await interaction.reply({ content: 'Please select a valid role.', ephemeral: true });
+        await interaction.reply({ content: 'Please select a valid role.', flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -717,11 +809,11 @@ async function handleSetAdminRole(interaction) {
 
         await interaction.reply({
             content: `✅ Set ${role.toString()} as the Admin role for configuration commands (e.g., /setchannel, /managecron, managing other users).`,
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
     } catch (error) {
         logger.error('Error setting admin role:', error);
-        await interaction.reply({ content: 'An error occurred while setting the Admin role.', ephemeral: true });
+        await interaction.reply({ content: 'An error occurred while setting the Admin role.', flags: MessageFlags.Ephemeral });
     }
 }
 
@@ -933,12 +1025,12 @@ async function handleConfig(interaction) {
     if (!isAdmin) {
         await interaction.reply({
             content: 'You need the configured Admin role (or Administrator permission) to view the configuration.',
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
         const guildConfig = await getGuildConfig(interaction.guildId);
@@ -1076,7 +1168,7 @@ function buildCalendarHeatmap(calendarData, rangeDays) {
 }
 
 async function handleCalendar(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
         const rangeOption = interaction.options.getInteger('range') || 7;
@@ -1205,7 +1297,7 @@ async function handleLeaderboard(interaction) {
     const metric = interaction.options.getString('metric') || 'streak';
     const ephemeral = interaction.options.getBoolean('ephemeral') || false;
 
-    await interaction.deferReply({ ephemeral });
+    await interaction.deferReply({ flags: ephemeral ? MessageFlags.Ephemeral : undefined });
 
     try {
         const guildUsers = await getGuildUsers(interaction.guildId);
@@ -1265,19 +1357,19 @@ async function handleLeaderboardPagination(interaction) {
         const parts = interaction.customId.split(':');
         // lb:guildId:ownerId:metric:period:page
         if (parts.length !== 6) {
-            await interaction.reply({ content: 'Invalid leaderboard state.', ephemeral: true });
+            await interaction.reply({ content: 'Invalid leaderboard state.', flags: MessageFlags.Ephemeral });
             return;
         }
 
         const [, guildId, ownerId, metric, period, pageStr] = parts;
 
         if (guildId !== interaction.guildId) {
-            await interaction.reply({ content: 'This leaderboard belongs to another server.', ephemeral: true });
+            await interaction.reply({ content: 'This leaderboard belongs to another server.', flags: MessageFlags.Ephemeral });
             return;
         }
 
         if (interaction.user.id !== ownerId) {
-            await interaction.reply({ content: 'Only the user who requested this leaderboard can change pages.', ephemeral: true });
+            await interaction.reply({ content: 'Only the user who requested this leaderboard can change pages.', flags: MessageFlags.Ephemeral });
             return;
         }
 
@@ -1328,7 +1420,7 @@ async function handleLeaderboardPagination(interaction) {
     } catch (error) {
         logger.error('Error in handleLeaderboardPagination:', error);
         if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: 'Error updating leaderboard.', ephemeral: true });
+            await interaction.reply({ content: 'Error updating leaderboard.', flags: MessageFlags.Ephemeral });
         }
     }
 }
@@ -1587,11 +1679,11 @@ async function handleForceCheck(interaction) {
     // Treat as a config/admin command: require admin role (or Administrator fallback)
     const isAdmin = await hasAdminAccess(interaction);
     if (!isAdmin) {
-        await interaction.reply({ content: 'You need the configured Admin role (or Administrator permission) to use this command.', ephemeral: true });
+        await interaction.reply({ content: 'You need the configured Admin role (or Administrator permission) to use this command.', flags: MessageFlags.Ephemeral });
         return;
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
         const result = await performDailyCheck(interaction.client, interaction.guildId, interaction.channelId);
@@ -1604,7 +1696,7 @@ async function handleForceCheck(interaction) {
 
 async function handleBroadcast(interaction) {
     if (interaction.user.id !== '637911567920529409') {
-        await interaction.reply({ content: 'You are not authorized to use this command.', ephemeral: true });
+        await interaction.reply({ content: 'You are not authorized to use this command.', flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -1663,7 +1755,7 @@ async function handleBroadcastSubmit(interaction) {
         timestamp: new Date()
     };
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
         const guilds = await getAllGuildConfigs();
@@ -1709,7 +1801,7 @@ async function handleBroadcastSubmit(interaction) {
 async function handleToggleBroadcast(interaction) {
     const guild = interaction.guild;
     if (!guild) {
-        await interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+        await interaction.reply({ content: 'This command can only be used in a server.', flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -1721,12 +1813,12 @@ async function handleToggleBroadcast(interaction) {
     if (!isOwner && !isAdmin) {
         await interaction.reply({
             content: 'Only the server owner or users with the configured Admin role (or Administrator permission) can toggle broadcasts for this server.',
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
         const guildConfig = await getGuildConfig(interaction.guildId);
@@ -1896,4 +1988,4 @@ async function handleDaily(interaction) {
     }
 }
 
-module.exports = { handleInteraction, initializeAutocompleteCache };
+module.exports = { handleInteraction, initializeAutocompleteCache, formatLeetCodeContestEmbed };
