@@ -49,7 +49,8 @@
 - `scripts/`: Migration and utility scripts
 - `logs/`: Log output (errors, combined)
 - `.env`: Required for secrets (not committed)
-- `README.md`: Full command and setup documentation
+- `modules/commandRegistration.js`: Command definitions and registration logic
+- `README.md`: Full setup documentation
 
 ## Examples
 - **Add tracked user:** `/adduser leetcode_username @DiscordUser`
@@ -61,7 +62,7 @@
 - Always check MongoDB for config/state, not local files
 - Use Discord slash commands for all user interactions
 - Follow logging and error conventions (Winston, logs/)
-- Reference `README.md` for command details and workflows
+- Reference `modules/commandRegistration.js` for command details and workflows
 
 ## Additional Caveats & Best Practices
 
@@ -70,7 +71,7 @@
 - **Admin-Only Commands:**  
   If you add a command that should be admin-only, always confirm with the user if admin restriction is required. Enforce permission checks (e.g., `MANAGE_GUILD`, `ADMINISTRATOR`) in the command handler and provide clear denial messages if permissions are insufficient.
 - **Command Registration & Help:**  
-  When adding or changing commands, update both the command registration logic and the help text in `README.md` and command embeds.
+  When adding or changing commands, update both the command registration logic and command embeds.
 - **Logging:**  
   All config/admin actions and errors must be logged using Winston (`modules/logger.js`).  
 - **Scheduling:**  
