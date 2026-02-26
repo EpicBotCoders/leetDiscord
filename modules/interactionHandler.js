@@ -446,6 +446,7 @@ async function handleInteraction(interaction) {
                 await handleContest(interaction);
                 break;
             case 'hc':
+                logger.debug('[hc] Routing to handleHealthchecks');
                 await handleHealthchecks(interaction);
                 break;
             default:
@@ -2029,8 +2030,14 @@ async function isOwnerOnly(userId) {
  * Main handler for /hc commands
  */
 async function handleHealthchecks(interaction) {
+    logger.debug(`[hc] Received /hc command from ${interaction.user.tag} (${interaction.user.id})`);
+
     // Check owner permission
-    if (!(await isOwnerOnly(interaction.user.id))) {
+    const isOwner = await isOwnerOnly(interaction.user.id);
+    logger.debug(`[hc] Permission check for user ${interaction.user.id}: isOwner=${isOwner}`);
+
+    if (!isOwner) {
+        logger.warn(`[hc] Unauthorized access attempt to /hc by ${interaction.user.tag}`);
         const embed = {
             color: 0xff4444,
             description: '❌ This command is only available to the bot owner.',
@@ -2041,6 +2048,7 @@ async function handleHealthchecks(interaction) {
     }
 
     const subcommand = interaction.options.getSubcommand();
+    logger.debug(`[hc] Subcommand: ${subcommand}`);
 
     switch (subcommand) {
         case 'overview':
@@ -2064,11 +2072,15 @@ async function handleHealthchecks(interaction) {
  * /hc overview - Show all checks
  */
 async function handleHealthchecksOverview(interaction) {
+    logger.debug('[hc] Entering handleHealthchecksOverview');
     await interaction.deferReply();
+    logger.debug('[hc] Defer reply sent for /hc overview');
 
     try {
         const { listChecks, formatTimeAgo } = require('./healthchecksApiUtils');
+        logger.debug('[hc] Fetching checks list...');
         const checks = await listChecks();
+        logger.debug(`[hc] Received ${checks.length} checks`);
 
         if (checks.length === 0) {
             await interaction.editReply('No checks found. Configure Healthchecks.io first.');
@@ -2131,14 +2143,19 @@ async function handleHealthchecksOverview(interaction) {
  * /hc info <check> - Detailed check information
  */
 async function handleHealthchecksInfo(interaction) {
+    logger.debug('[hc] Entering handleHealthchecksInfo');
     await interaction.deferReply();
+    logger.debug('[hc] Defer reply sent for /hc info');
 
     try {
         const checkName = interaction.options.getString('check');
+        logger.debug(`[hc] Fetching info for check: ${checkName}`);
         const { findCheckByName, getCheckDetails, formatTime } = require('./healthchecksApiUtils');
 
         const checkInfo = await findCheckByName(checkName);
+        logger.debug(`[hc] Found check info for ${checkName}: ${checkInfo.uuid}`);
         const details = await getCheckDetails(checkInfo.uuid);
+        logger.debug(`[hc] Successfully fetched details for ${checkInfo.uuid}`);
 
         const embed = {
             title: `📋 ${details.name}`,
@@ -2211,15 +2228,20 @@ async function handleHealthchecksInfo(interaction) {
  * /hc history <check> [limit] - Recent pings
  */
 async function handleHealthchecksHistory(interaction) {
+    logger.debug('[hc] Entering handleHealthchecksHistory');
     await interaction.deferReply();
+    logger.debug('[hc] Defer reply sent for /hc history');
 
     try {
         const checkName = interaction.options.getString('check');
         const limit = interaction.options.getInteger('limit') || 10;
+        logger.debug(`[hc] Fetching history for check: ${checkName}, limit: ${limit}`);
         const { findCheckByName, getCheckPings, formatTime } = require('./healthchecksApiUtils');
 
         const checkInfo = await findCheckByName(checkName);
+        logger.debug(`[hc] Found check info for ${checkName}: ${checkInfo.uuid}`);
         const pings = await getCheckPings(checkInfo.uuid, limit);
+        logger.debug(`[hc] Successfully fetched ${pings.length} pings`);
 
         if (pings.length === 0) {
             await interaction.editReply(`No pings found for **${checkInfo.name}**.`);
@@ -2255,16 +2277,21 @@ async function handleHealthchecksHistory(interaction) {
  * /hc flips <check> [days] - Status changes
  */
 async function handleHealthchecksFlips(interaction) {
+    logger.debug('[hc] Entering handleHealthchecksFlips');
     await interaction.deferReply();
+    logger.debug('[hc] Defer reply sent for /hc flips');
 
     try {
         const checkName = interaction.options.getString('check');
         const days = interaction.options.getInteger('days') || 7;
+        logger.debug(`[hc] Fetching flips for check: ${checkName}, days: ${days}`);
         const { findCheckByName, getCheckFlips, formatTime } = require('./healthchecksApiUtils');
 
         const checkInfo = await findCheckByName(checkName);
+        logger.debug(`[hc] Found check info for ${checkName}: ${checkInfo.uuid}`);
         const seconds = days * 24 * 60 * 60; // Convert days to seconds
         const flips = await getCheckFlips(checkInfo.uuid, seconds);
+        logger.debug(`[hc] Successfully fetched ${flips.length} flips`);
 
         if (flips.length === 0) {
             await interaction.editReply(`No status changes found for **${checkInfo.name}** in the last ${days} days.`);
@@ -2304,12 +2331,14 @@ const HC_CACHE_TTL = 24 * 60 * 60 * 1000; // 1 day in milliseconds
 
 async function handleHealthchecksAutocomplete(interaction) {
     const focusedValue = interaction.options.getFocused().toLowerCase();
+    logger.debug(`[hc-autocomplete] Entering for value: "${focusedValue}"`);
 
     try {
         const { listChecks } = require('./healthchecksApiUtils');
 
         const now = Date.now();
         if (!cachedHcChecks || (now - hcChecksCacheTime > HC_CACHE_TTL)) {
+            logger.debug('[hc-autocomplete] Cache expired or empty, fetching checks...');
             cachedHcChecks = await listChecks();
             hcChecksCacheTime = now;
         }

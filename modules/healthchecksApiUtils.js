@@ -111,11 +111,11 @@ function formatTime(isoTimestamp) {
  */
 function formatTimeAgo(isoTimestamp) {
     if (!isoTimestamp) return 'Never';
-    
+
     const date = new Date(isoTimestamp);
     const now = new Date();
     const secondsAgo = Math.floor((now - date) / 1000);
-    
+
     if (secondsAgo < 60) return `${secondsAgo}s ago`;
     const minutesAgo = Math.floor(secondsAgo / 60);
     if (minutesAgo < 60) return `${minutesAgo}m ago`;
@@ -130,36 +130,37 @@ function formatTimeAgo(isoTimestamp) {
  */
 async function listChecks() {
     const now = Date.now();
-    
+    logger.debug('[hc-api] listChecks called');
+
     // Return cached if valid
     if (cache.checks.value && isCacheValid(cache.checks.expiry)) {
-        logger.debug('Using cached checks list');
+        logger.debug('[hc-api] Returning cached checks list');
         return cache.checks.value;
     }
-    
+
     try {
-        logger.info('Fetching healthchecks list from API');
+        logger.info('[hc-api] Fetching healthchecks list from API');
         const client = createAxiosInstance();
         const response = await client.get('/checks/');
-        
+
         const checks = response.data.checks || [];
-        
+
         // Format checks for display
         const formatted = checks.map(check => formatCheckForDisplay(check));
-        
+
         // Store in cache
         cache.checks.value = formatted;
         cache.checks.expiry = now + TTL.checks;
-        
+
         logger.info(`Fetched ${checks.length} checks`);
         return formatted;
     } catch (error) {
         logger.error('Error fetching checks from API:', error.message);
-        
+
         if (error.response?.status === 401) {
             throw new Error('Invalid or missing HEALTHCHECKS_API_KEY');
         }
-        
+
         throw error;
     }
 }
@@ -169,40 +170,41 @@ async function listChecks() {
  */
 async function getCheckDetails(uuid) {
     const now = Date.now();
-    
+    logger.debug(`[hc-api] getCheckDetails called for ${uuid}`);
+
     // Check cache first
     if (cache.checkDetails.has(uuid)) {
         const cached = cache.checkDetails.get(uuid);
         if (isCacheValid(cached.expiry)) {
-            logger.debug(`Using cached details for check ${uuid}`);
+            logger.debug(`[hc-api] Returning cached details for check ${uuid}`);
             return cached.value;
         }
     }
-    
+
     try {
-        logger.info(`Fetching check details for ${uuid}`);
+        logger.info(`[hc-api] Fetching check details for ${uuid}`);
         const client = createAxiosInstance();
         const response = await client.get(`/checks/${uuid}`);
-        
+
         const check = response.data;
-        
+
         // Store in cache
         cache.checkDetails.set(uuid, {
             value: check,
             expiry: now + TTL.checks
         });
-        
+
         return check;
     } catch (error) {
         logger.error(`Error fetching check ${uuid}:`, error.message);
-        
+
         if (error.response?.status === 404) {
             throw new Error(`Check not found: ${uuid}`);
         }
         if (error.response?.status === 401) {
             throw new Error('Invalid or missing HEALTHCHECKS_API_KEY');
         }
-        
+
         throw error;
     }
 }
@@ -212,7 +214,7 @@ async function getCheckDetails(uuid) {
  */
 async function getCheckPings(uuid, limit = 20) {
     const now = Date.now();
-    
+
     // Check cache first
     if (cache.pings.has(uuid)) {
         const cached = cache.pings.get(uuid);
@@ -221,31 +223,31 @@ async function getCheckPings(uuid, limit = 20) {
             return cached.value.slice(0, limit);
         }
     }
-    
+
     try {
         logger.info(`Fetching pings for check ${uuid}`);
         const client = createAxiosInstance();
         const response = await client.get(`/checks/${uuid}/pings/`);
-        
+
         const pings = response.data.pings || [];
-        
+
         // Store full list in cache
         cache.pings.set(uuid, {
             value: pings,
             expiry: now + TTL.pings
         });
-        
+
         return pings.slice(0, limit);
     } catch (error) {
         logger.error(`Error fetching pings for ${uuid}:`, error.message);
-        
+
         if (error.response?.status === 404) {
             throw new Error(`Check not found: ${uuid}`);
         }
         if (error.response?.status === 401) {
             throw new Error('Invalid or missing HEALTHCHECKS_API_KEY');
         }
-        
+
         throw error;
     }
 }
@@ -255,10 +257,10 @@ async function getCheckPings(uuid, limit = 20) {
  */
 async function getCheckFlips(uuid, seconds = null) {
     const now = Date.now();
-    
+
     // Build cache key to differentiate by time filter
     const cacheKey = seconds ? `${uuid}:${seconds}` : uuid;
-    
+
     // Check cache first
     if (cache.flips.has(cacheKey)) {
         const cached = cache.flips.get(cacheKey);
@@ -267,36 +269,36 @@ async function getCheckFlips(uuid, seconds = null) {
             return cached.value;
         }
     }
-    
+
     try {
         logger.info(`Fetching flips for check ${uuid}`);
         const client = createAxiosInstance();
-        
+
         let url = `/checks/${uuid}/flips/`;
         if (seconds) {
             url += `?seconds=${seconds}`;
         }
-        
+
         const response = await client.get(url);
         const flips = Array.isArray(response.data) ? response.data : [];
-        
+
         // Store in cache
         cache.flips.set(cacheKey, {
             value: flips,
             expiry: now + TTL.flips
         });
-        
+
         return flips;
     } catch (error) {
         logger.error(`Error fetching flips for ${uuid}:`, error.message);
-        
+
         if (error.response?.status === 404) {
             throw new Error(`Check not found: ${uuid}`);
         }
         if (error.response?.status === 401) {
             throw new Error('Invalid or missing HEALTHCHECKS_API_KEY');
         }
-        
+
         throw error;
     }
 }
@@ -327,25 +329,25 @@ function formatCheckForDisplay(check) {
 async function findCheckByName(name) {
     const checks = await listChecks();
     const searchTerm = name.toLowerCase();
-    
+
     // Try exact match first
-    let match = checks.find(c => 
-        c.name.toLowerCase() === searchTerm || 
+    let match = checks.find(c =>
+        c.name.toLowerCase() === searchTerm ||
         c.slug.toLowerCase() === searchTerm
     );
-    
+
     if (match) return match;
-    
+
     // Try partial match
     match = checks.find(c =>
         c.name.toLowerCase().includes(searchTerm) ||
         c.slug.toLowerCase().includes(searchTerm)
     );
-    
+
     if (!match) {
         throw new Error(`Check not found: "${name}"`);
     }
-    
+
     return match;
 }
 
