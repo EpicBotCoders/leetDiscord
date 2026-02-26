@@ -31,6 +31,7 @@ node scripts/export-commands.js
 if [ $? -eq 0 ]; then
   echo "Staging generated commands.json..."
   git add frontend/public/commands.json
+  git add package.json
 else
   echo "Failed to export commands."
   exit 1

@@ -46,6 +46,10 @@ async function initializeServerLeaderboard(client) {
  */
 async function updateServerLeaderboard(client) {
     try {
+        // ping healthcheck for server leaderboard
+        const { ping } = require('./healthcheck');
+        ping('HC_PING_SERVER_LEADERBOARD');
+
         logger.info('Updating server leaderboard...');
 
         if (!STATS_GUILD_ID || !LEADERBOARD_CHANNEL_ID) {

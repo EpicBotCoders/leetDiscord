@@ -245,6 +245,55 @@ const commandDefinitions = [
                         { name: 'Warn', value: 'warn' },
                         { name: 'Alert', value: 'alert' }
                     ))
+    },
+    {
+        category: 'Monitoring',
+        data: new SlashCommandBuilder()
+            .setName('hc')
+            .setDescription('Healthchecks.io monitoring commands')
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('overview')
+                    .setDescription('Show overview of all monitored checks'))
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('info')
+                    .setDescription('Get detailed information about a specific check')
+                    .addStringOption(option =>
+                        option.setName('check')
+                            .setDescription('Name or slug of the check')
+                            .setRequired(true)
+                            .setAutocomplete(true)))
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('history')
+                    .setDescription('View recent pings for a check')
+                    .addStringOption(option =>
+                        option.setName('check')
+                            .setDescription('Name or slug of the check')
+                            .setRequired(true)
+                            .setAutocomplete(true))
+                    .addIntegerOption(option =>
+                        option.setName('limit')
+                            .setDescription('Number of recent pings to show (default: 10)')
+                            .setRequired(false)
+                            .setMinValue(1)
+                            .setMaxValue(50)))
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('flips')
+                    .setDescription('View status changes for a check')
+                    .addStringOption(option =>
+                        option.setName('check')
+                            .setDescription('Name or slug of the check')
+                            .setRequired(true)
+                            .setAutocomplete(true))
+                    .addIntegerOption(option =>
+                        option.setName('days')
+                            .setDescription('Show flips from last N days (default: 7)')
+                            .setRequired(false)
+                            .setMinValue(1)
+                            .setMaxValue(90)))
     }
 ].concat(contestCommands);
 

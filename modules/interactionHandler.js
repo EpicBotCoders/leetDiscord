@@ -236,6 +236,9 @@ async function handleAutocomplete(interaction) {
             case 'managecron':
                 await handleCronAutocomplete(interaction);
                 break;
+            case 'hc':
+                await handleHealthchecksAutocomplete(interaction);
+                break;
             default:
                 await interaction.respond([]);
         }
@@ -441,6 +444,9 @@ async function handleInteraction(interaction) {
                 break;
             case 'contest':
                 await handleContest(interaction);
+                break;
+            case 'hc':
+                await handleHealthchecks(interaction);
                 break;
             default:
                 await interaction.reply('Unknown command.');
@@ -1695,7 +1701,7 @@ async function handleForceCheck(interaction) {
 }
 
 async function handleBroadcast(interaction) {
-    if (interaction.user.id !== '637911567920529409') {
+    if (interaction.user.id !== process.env.BOT_OWNER_ID) {
         await interaction.reply({ content: 'You are not authorized to use this command.', flags: MessageFlags.Ephemeral });
         return;
     }
@@ -2003,6 +2009,328 @@ async function handleDaily(interaction) {
     } catch (error) {
         logger.error('Error in handleDaily:', error);
         await interaction.editReply('❌ An error occurred while fetching submission data. Please try again later.');
+    }
+}
+
+/**
+ * Healthchecks.io command handlers
+ */
+
+const BOT_OWNER_ID = process.env.BOT_OWNER_ID;
+
+/**
+ * Check if user is the bot owner
+ */
+async function isOwnerOnly(userId) {
+    return userId === BOT_OWNER_ID;
+}
+
+/**
+ * Main handler for /hc commands
+ */
+async function handleHealthchecks(interaction) {
+    // Check owner permission
+    if (!(await isOwnerOnly(interaction.user.id))) {
+        const embed = {
+            color: 0xff4444,
+            description: '❌ This command is only available to the bot owner.',
+            footer: { text: 'Healthchecks.io Monitoring' }
+        };
+        await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+        return;
+    }
+
+    const subcommand = interaction.options.getSubcommand();
+
+    switch (subcommand) {
+        case 'overview':
+            await handleHealthchecksOverview(interaction);
+            break;
+        case 'info':
+            await handleHealthchecksInfo(interaction);
+            break;
+        case 'history':
+            await handleHealthchecksHistory(interaction);
+            break;
+        case 'flips':
+            await handleHealthchecksFlips(interaction);
+            break;
+        default:
+            await interaction.reply('Unknown subcommand');
+    }
+}
+
+/**
+ * /hc overview - Show all checks
+ */
+async function handleHealthchecksOverview(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const { listChecks, formatTimeAgo } = require('./healthchecksApiUtils');
+        const checks = await listChecks();
+
+        if (checks.length === 0) {
+            await interaction.editReply('No checks found. Configure Healthchecks.io first.');
+            return;
+        }
+
+        // Build table content
+        const lines = ['```\nName                | Status  | Last Ping     | Next Ping'];
+        lines.push('─'.repeat(75));
+
+        for (const check of checks) {
+            const lastPing = formatTimeAgo(check.lastPing);
+            const nextPing = check.nextPing ? formatTimeAgo(new Date(check.nextPing)) : 'N/A';
+
+            const name = check.name.substring(0, 18).padEnd(18);
+            const status = `${check.statusEmoji} ${check.status}`.padEnd(8);
+            const lastPingStr = lastPing.padEnd(13);
+
+            lines.push(`${name} | ${status} | ${lastPingStr} | ${nextPing}`);
+        }
+
+        lines.push('```');
+
+        const embed = {
+            title: '📊 Healthchecks.io Overview',
+            description: lines.join('\n'),
+            color: 0x00ff00,
+            fields: [
+                {
+                    name: 'Total Checks',
+                    value: `${checks.length}`,
+                    inline: true
+                },
+                {
+                    name: 'Up',
+                    value: `${checks.filter(c => c.status === 'up').length}`,
+                    inline: true
+                },
+                {
+                    name: 'Down',
+                    value: `${checks.filter(c => c.status === 'down').length}`,
+                    inline: true
+                }
+            ],
+            footer: { text: 'Last updated' },
+            timestamp: new Date()
+        };
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        logger.error('Error in handleHealthchecksOverview:', error);
+        const errorMsg = error.message.includes('HEALTHCHECKS_API_KEY')
+            ? '❌ API key not configured. Set `HEALTHCHECKS_API_KEY` in environment.'
+            : `❌ Error: ${error.message}`;
+        await interaction.editReply(errorMsg);
+    }
+}
+
+/**
+ * /hc info <check> - Detailed check information
+ */
+async function handleHealthchecksInfo(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const checkName = interaction.options.getString('check');
+        const { findCheckByName, getCheckDetails, formatTime } = require('./healthchecksApiUtils');
+
+        const checkInfo = await findCheckByName(checkName);
+        const details = await getCheckDetails(checkInfo.uuid);
+
+        const embed = {
+            title: `📋 ${details.name}`,
+            color: details.status === 'up' ? 0x00ff00 : (details.status === 'down' ? 0xff4444 : 0xffaa00),
+            fields: [
+                {
+                    name: 'Status',
+                    value: `${checkInfo.statusEmoji} ${checkInfo.status.toUpperCase()}`,
+                    inline: true
+                },
+                {
+                    name: 'Slug',
+                    value: details.slug,
+                    inline: true
+                },
+                {
+                    name: 'Last Ping',
+                    value: details.last_ping ? formatTime(details.last_ping) : 'Never',
+                    inline: false
+                },
+                {
+                    name: 'Next Expected',
+                    value: details.next_ping ? formatTime(details.next_ping) : 'N/A',
+                    inline: false
+                },
+                {
+                    name: 'Timeout',
+                    value: `${details.timeout}s (${Math.floor(details.timeout / 60)}m)`,
+                    inline: true
+                },
+                {
+                    name: 'Grace Period',
+                    value: `${details.grace}s (${Math.floor(details.grace / 60)}m)`,
+                    inline: true
+                },
+                {
+                    name: 'Total Pings',
+                    value: `${details.n_pings}`,
+                    inline: true
+                },
+                {
+                    name: 'Tags',
+                    value: details.tags || 'None',
+                    inline: false
+                }
+            ],
+            footer: { text: 'Healthchecks.io' },
+            timestamp: new Date()
+        };
+
+        if (details.desc) {
+            embed.fields.push({
+                name: 'Description',
+                value: details.desc,
+                inline: false
+            });
+        }
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        logger.error('Error in handleHealthchecksInfo:', error);
+        const errorMsg = error.message.includes('HEALTHCHECKS_API_KEY')
+            ? '❌ API key not configured.'
+            : `❌ Error: ${error.message}`;
+        await interaction.editReply(errorMsg);
+    }
+}
+
+/**
+ * /hc history <check> [limit] - Recent pings
+ */
+async function handleHealthchecksHistory(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const checkName = interaction.options.getString('check');
+        const limit = interaction.options.getInteger('limit') || 10;
+        const { findCheckByName, getCheckPings, formatTime } = require('./healthchecksApiUtils');
+
+        const checkInfo = await findCheckByName(checkName);
+        const pings = await getCheckPings(checkInfo.uuid, limit);
+
+        if (pings.length === 0) {
+            await interaction.editReply(`No pings found for **${checkInfo.name}**.`);
+            return;
+        }
+
+        const lines = pings.map((ping, i) => {
+            const typeEmoji = ping.type === 'success' ? '✅' : (ping.type === 'start' ? '🚀' : '❌');
+            const date = formatTime(ping.date);
+            const duration = ping.duration ? ` (${ping.duration.toFixed(2)}s)` : '';
+            return `${i + 1}. ${typeEmoji} ${date}${duration}`;
+        });
+
+        const embed = {
+            title: `📜 History - ${checkInfo.name}`,
+            description: lines.join('\n'),
+            color: 0x00aaff,
+            footer: { text: `Showing last ${pings.length} pings` },
+            timestamp: new Date()
+        };
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        logger.error('Error in handleHealthchecksHistory:', error);
+        const errorMsg = error.message.includes('HEALTHCHECKS_API_KEY')
+            ? '❌ API key not configured.'
+            : `❌ Error: ${error.message}`;
+        await interaction.editReply(errorMsg);
+    }
+}
+
+/**
+ * /hc flips <check> [days] - Status changes
+ */
+async function handleHealthchecksFlips(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const checkName = interaction.options.getString('check');
+        const days = interaction.options.getInteger('days') || 7;
+        const { findCheckByName, getCheckFlips, formatTime } = require('./healthchecksApiUtils');
+
+        const checkInfo = await findCheckByName(checkName);
+        const seconds = days * 24 * 60 * 60; // Convert days to seconds
+        const flips = await getCheckFlips(checkInfo.uuid, seconds);
+
+        if (flips.length === 0) {
+            await interaction.editReply(`No status changes found for **${checkInfo.name}** in the last ${days} days.`);
+            return;
+        }
+
+        const lines = flips.map((flip, i) => {
+            const status = flip.up ? '🟢 UP' : '🔴 DOWN';
+            const date = formatTime(flip.timestamp);
+            return `${i + 1}. ${date} → ${status}`;
+        });
+
+        const embed = {
+            title: `🔄 Status Changes - ${checkInfo.name}`,
+            description: lines.join('\n'),
+            color: 0xffaa00,
+            footer: { text: `Last ${days} days (${flips.length} status changes)` },
+            timestamp: new Date()
+        };
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        logger.error('Error in handleHealthchecksFlips:', error);
+        const errorMsg = error.message.includes('HEALTHCHECKS_API_KEY')
+            ? '❌ API key not configured.'
+            : `❌ Error: ${error.message}`;
+        await interaction.editReply(errorMsg);
+    }
+}
+
+/**
+ * Autocomplete for /hc check names
+ */
+let cachedHcChecks = null;
+let hcChecksCacheTime = 0;
+const HC_CACHE_TTL = 24 * 60 * 60 * 1000; // 1 day in milliseconds
+
+async function handleHealthchecksAutocomplete(interaction) {
+    const focusedValue = interaction.options.getFocused().toLowerCase();
+
+    try {
+        const { listChecks } = require('./healthchecksApiUtils');
+
+        const now = Date.now();
+        if (!cachedHcChecks || (now - hcChecksCacheTime > HC_CACHE_TTL)) {
+            cachedHcChecks = await listChecks();
+            hcChecksCacheTime = now;
+        }
+
+        const checks = cachedHcChecks;
+
+        const filtered = checks
+            .filter(check =>
+                check.name.toLowerCase().includes(focusedValue) ||
+                check.slug.toLowerCase().includes(focusedValue)
+            )
+            .slice(0, 25) // Discord limit
+            .map(check => ({
+                name: `${check.statusEmoji} ${check.name}`,
+                value: check.name
+            }));
+
+        await interaction.respond(filtered);
+    } catch (error) {
+        logger.error('Error in handleHealthchecksAutocomplete:', error);
+        await interaction.respond([]);
     }
 }
 

@@ -357,6 +357,79 @@
     "hidden": true
   },
   {
+    "name": "hc",
+    "description": "Healthchecks.io monitoring commands",
+    "options": [
+      {
+        "type": 1,
+        "name": "overview",
+        "description": "Show overview of all monitored checks",
+        "options": []
+      },
+      {
+        "type": 1,
+        "name": "info",
+        "description": "Get detailed information about a specific check",
+        "options": [
+          {
+            "autocomplete": true,
+            "type": 3,
+            "name": "check",
+            "description": "Name or slug of the check",
+            "required": true
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "history",
+        "description": "View recent pings for a check",
+        "options": [
+          {
+            "autocomplete": true,
+            "type": 3,
+            "name": "check",
+            "description": "Name or slug of the check",
+            "required": true
+          },
+          {
+            "max_value": 50,
+            "min_value": 1,
+            "type": 4,
+            "name": "limit",
+            "description": "Number of recent pings to show (default: 10)",
+            "required": false
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "flips",
+        "description": "View status changes for a check",
+        "options": [
+          {
+            "autocomplete": true,
+            "type": 3,
+            "name": "check",
+            "description": "Name or slug of the check",
+            "required": true
+          },
+          {
+            "max_value": 90,
+            "min_value": 1,
+            "type": 4,
+            "name": "days",
+            "description": "Show flips from last N days (default: 7)",
+            "required": false
+          }
+        ]
+      }
+    ],
+    "category": "Monitoring",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
     "name": "togglecontestreminder",
     "description": "Enable or disable LeetCode contest reminders for this server",
     "options": [],

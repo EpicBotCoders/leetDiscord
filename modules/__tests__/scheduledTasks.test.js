@@ -1,4 +1,4 @@
-const { scheduleDailyCheck } = require('../scheduledTasks');
+const { scheduleDailyCheck, performContestReminder, performSilentCheck } = require('../scheduledTasks');
 const Guild = require('../models/Guild');
 const DailySubmission = require('../models/DailySubmission');
 const logger = require('../logger');
@@ -183,6 +183,30 @@ describe('scheduledTasks', () => {
 
             // Should not create new submission
             expect(DailySubmission.create).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('healthcheck pings', () => {
+        beforeEach(() => {
+            // clear axios call history
+            axios.get.mockClear();
+        });
+
+        it('should ping contest reminder healthcheck before running', async () => {
+            process.env.HC_PING_CONTEST_REMINDER = 'https://hc-ping.com/contest';
+            // make sure no guilds to simplify
+            Guild.find.mockResolvedValue([]);
+
+            await performContestReminder(mockClient);
+            expect(axios.get.mock.calls[0][0]).toBe(process.env.HC_PING_CONTEST_REMINDER);
+        });
+
+        it('should ping silent daily check healthcheck before running', async () => {
+            process.env.HC_PING_SILENT_CHECK = 'https://hc-ping.com/silent';
+            Guild.find.mockResolvedValue([]);
+
+            await performSilentCheck(mockClient);
+            expect(axios.get.mock.calls[0][0]).toBe(process.env.HC_PING_SILENT_CHECK);
         });
     });
 });

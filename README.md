@@ -253,6 +253,10 @@ graph TD
 | DISCORD_TOKEN | Your Discord bot token |
 | MONGODB_URI | MongoDB Atlas connection string |
 | NODE_ENV | Set to 'production' for production logging levels |
+| HC_PING_CONTEST_REMINDER | *(optional)* URL that will be GET‑pinged whenever the contest reminder job runs |
+| HC_PING_SILENT_CHECK | *(optional)* URL that will be GET‑pinged before each silent daily check |
+| HC_PING_STATS_PANEL | *(optional)* URL that will be GET‑pinged when the stats panel is updated |
+| HC_PING_SERVER_LEADERBOARD | *(optional)* URL that will be GET‑pinged when the server leaderboard is updated |
 
 ## Security
 

@@ -1,6 +1,56 @@
 const { getLeetCodeContests } = require('./apiUtils');
 const { formatLeetCodeContestEmbed } = require('./interactionHandler');
 // Schedule contest reminder for all opted-in guilds (every Friday 16:00 UTC)
+// The logic is separated so it can be invoked directly in tests.
+async function performContestReminder(client) {
+    logger.info('Running LeetCode contest reminder broadcast');
+    // ping healthcheck if configured
+    const { ping } = require('./healthcheck');
+    ping('HC_PING_CONTEST_REMINDER');
+
+    try {
+        const data = await getLeetCodeContests();
+        if (!data || !data.topTwoContests || data.topTwoContests.length === 0) {
+            logger.warn('No upcoming LeetCode contests found for reminder broadcast.');
+            return;
+        }
+        // Collect all upcoming contests, sorted by start time
+        const now = Math.floor(Date.now() / 1000);
+        const upcomingContests = data.topTwoContests
+            .filter(c => c.startTime > now)
+            .sort((a, b) => a.startTime - b.startTime);
+        if (upcomingContests.length === 0) {
+            logger.warn('No upcoming LeetCode contests found for reminder broadcast.');
+            return;
+        }
+        const embeds = upcomingContests.map((contest, i) =>
+            formatLeetCodeContestEmbed(contest, i, upcomingContests.length)
+        );
+        const guilds = await Guild.find({ contestReminderEnabled: true });
+        for (const guild of guilds) {
+            try {
+                const channel = await client.channels.fetch(guild.channelId).catch(() => null);
+                if (!channel) {
+                    logger.warn(`Contest reminder: Channel ${guild.channelId} not found for guild ${guild.guildId}`);
+                    continue;
+                }
+                const botMember = await channel.guild.members.fetchMe();
+                const permissions = channel.permissionsFor(botMember);
+                if (!permissions?.has(PermissionsBitField.Flags.SendMessages)) {
+                    logger.warn(`Contest reminder: No permission to send messages in channel ${channel.id} for guild ${guild.guildId}`);
+                    continue;
+                }
+                await channel.send({ embeds });
+                logger.info(`Sent contest reminder (${upcomingContests.length} contest(s)) to guild ${guild.guildId}`);
+            } catch (err) {
+                logger.error(`Error sending contest reminder to guild ${guild.guildId}:`, err);
+            }
+        }
+    } catch (error) {
+        logger.error('Error in contest reminder broadcast:', error);
+    }
+}
+
 function scheduleContestReminderJob(client) {
     const schedule = '0 16 * * 5'; // Friday 16:00 UTC
     const jobKey = 'contest-reminder';
@@ -10,48 +60,7 @@ function scheduleContestReminderJob(client) {
     }
     logger.info('Scheduling LeetCode contest reminder job for Fridays at 16:00 UTC');
     const job = cron.schedule(schedule, async () => {
-        logger.info('Running LeetCode contest reminder broadcast');
-        try {
-            const data = await getLeetCodeContests();
-            if (!data || !data.topTwoContests || data.topTwoContests.length === 0) {
-                logger.warn('No upcoming LeetCode contests found for reminder broadcast.');
-                return;
-            }
-            // Collect all upcoming contests, sorted by start time
-            const now = Math.floor(Date.now() / 1000);
-            const upcomingContests = data.topTwoContests
-                .filter(c => c.startTime > now)
-                .sort((a, b) => a.startTime - b.startTime);
-            if (upcomingContests.length === 0) {
-                logger.warn('No upcoming LeetCode contests found for reminder broadcast.');
-                return;
-            }
-            const embeds = upcomingContests.map((contest, i) =>
-                formatLeetCodeContestEmbed(contest, i, upcomingContests.length)
-            );
-            const guilds = await Guild.find({ contestReminderEnabled: true });
-            for (const guild of guilds) {
-                try {
-                    const channel = await client.channels.fetch(guild.channelId).catch(() => null);
-                    if (!channel) {
-                        logger.warn(`Contest reminder: Channel ${guild.channelId} not found for guild ${guild.guildId}`);
-                        continue;
-                    }
-                    const botMember = await channel.guild.members.fetchMe();
-                    const permissions = channel.permissionsFor(botMember);
-                    if (!permissions?.has(PermissionsBitField.Flags.SendMessages)) {
-                        logger.warn(`Contest reminder: No permission to send messages in channel ${channel.id} for guild ${guild.guildId}`);
-                        continue;
-                    }
-                    await channel.send({ embeds });
-                    logger.info(`Sent contest reminder (${upcomingContests.length} contest(s)) to guild ${guild.guildId}`);
-                } catch (err) {
-                    logger.error(`Error sending contest reminder to guild ${guild.guildId}:`, err);
-                }
-            }
-        } catch (error) {
-            logger.error('Error in contest reminder broadcast:', error);
-        }
+        await performContestReminder(client);
     }, { timezone: 'UTC' });
     activeCronJobs.set(jobKey, job);
 }
@@ -377,6 +386,10 @@ async function scheduleSilentDailyCheck(client) {
     logger.info(`Scheduling silent daily check with schedule: ${schedule} (UTC)`);
 
     const job = cron.schedule(schedule, async () => {
+        // ping healthcheck before running
+        const { ping } = require('./healthcheck');
+        ping('HC_PING_SILENT_CHECK');
+
         logger.info('Starting silent daily check...');
         await performSilentCheck(client);
         logger.info('Silent daily check completed.');
@@ -549,5 +562,6 @@ module.exports = {
     stopAllCronJobs,
     performDailyCheck,
     scheduleSilentDailyCheck,
-    performSilentCheck
+    performSilentCheck,
+    performContestReminder    // exposed for testing
 };

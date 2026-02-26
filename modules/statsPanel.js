@@ -46,6 +46,10 @@ async function initializeStatsPanel(client) {
  */
 async function updateStatsPanel(client) {
     try {
+        // ping healthcheck for stats panel
+        const { ping } = require('./healthcheck');
+        ping('HC_PING_STATS_PANEL');
+
         logger.info('Updating stats panel...');
 
         // Fetch the target guild and channel
