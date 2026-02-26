@@ -191,7 +191,7 @@ async function main() {
             res.sendFile(path.join(__dirname, 'frontend/out/index.html'));
         });
 
-        const server = app.listen(port, () => {
+        const server = app.listen(port, "0.0.0.0",  () => {
             logger.info(`Express server listening on port ${port}`);
         });
 

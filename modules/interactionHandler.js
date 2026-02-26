@@ -350,40 +350,45 @@ async function handleCronAutocomplete(interaction) {
 }
 
 async function handleInteraction(interaction) {
-    logger.info(`Interaction received: ${interaction.commandName}`);
-
-    // Handle leaderboard pagination buttons
-    if (interaction.isButton() && interaction.customId.startsWith('lb:')) {
-        await handleLeaderboardPagination(interaction);
-        return;
-    }
-
-    // Handle autocomplete interactions
-    if (interaction.isAutocomplete()) {
-        await handleAutocomplete(interaction);
-        return;
-    }
-
-    // Handle modal submits
-    if (interaction.isModalSubmit()) {
-        if (interaction.customId.startsWith('broadcast_')) {
-            await handleBroadcastSubmit(interaction);
-        }
-        return;
-    }
-
-    if (!interaction.isCommand()) {
-        logger.info('Interaction is not a command. Ignoring.');
-        return;
-    }
-
-    const { commandName, guildId } = interaction;
-    if (!guildId) {
-        await interaction.reply('This command can only be used in a server.');
-        return;
-    }
-
     try {
+        const { commandName, guildId, type } = interaction;
+        logger.info(`Interaction received: name="${commandName}", type=${type}, guildId="${guildId}"`);
+
+        // Handle leaderboard pagination buttons
+        if (interaction.isButton() && interaction.customId.startsWith('lb:')) {
+            logger.info(`Handling leaderboard button: ${interaction.customId}`);
+            await handleLeaderboardPagination(interaction);
+            return;
+        }
+
+        // Handle autocomplete interactions
+        if (interaction.isAutocomplete()) {
+            logger.info(`Handling autocomplete for: ${commandName}`);
+            await handleAutocomplete(interaction);
+            return;
+        }
+
+        // Handle modal submits
+        if (interaction.isModalSubmit()) {
+            logger.info(`Handling modal submit: ${interaction.customId}`);
+            if (interaction.customId.startsWith('broadcast_')) {
+                await handleBroadcastSubmit(interaction);
+            }
+            return;
+        }
+
+        if (!interaction.isCommand()) {
+            logger.info(`Interaction is not a command (type ${type}). Ignoring.`);
+            return;
+        }
+
+        if (!guildId) {
+            logger.info(`Command ${commandName} received without guildId (DM?).`);
+            await interaction.reply('This command can only be used in a server.');
+            return;
+        }
+
+        logger.info(`Routing to command handler for: ${commandName}`);
         switch (commandName) {
             case 'check':
                 await handleCheck(interaction);
@@ -446,14 +451,14 @@ async function handleInteraction(interaction) {
                 await handleContest(interaction);
                 break;
             case 'hc':
-                logger.debug('[hc] Routing to handleHealthchecks');
+                logger.info('[hc] Routing to handleHealthchecks');
                 await handleHealthchecks(interaction);
                 break;
             default:
                 await interaction.reply('Unknown command.');
         }
     } catch (error) {
-        logger.error(`Error handling ${commandName}:`, error);
+        logger.error(`Error handling interaction (command: ${interaction?.commandName || 'unknown'}):`, error);
 
         // Handle specific error: Guild not configured
         if (error.message === 'Guild not configured') {
@@ -2030,11 +2035,11 @@ async function isOwnerOnly(userId) {
  * Main handler for /hc commands
  */
 async function handleHealthchecks(interaction) {
-    logger.debug(`[hc] Received /hc command from ${interaction.user.tag} (${interaction.user.id})`);
+    logger.info(`[hc] Received /hc command from ${interaction.user.tag} (${interaction.user.id})`);
 
     // Check owner permission
     const isOwner = await isOwnerOnly(interaction.user.id);
-    logger.debug(`[hc] Permission check for user ${interaction.user.id}: isOwner=${isOwner}`);
+    logger.info(`[hc] Permission check for user ${interaction.user.id}: isOwner=${isOwner}`);
 
     if (!isOwner) {
         logger.warn(`[hc] Unauthorized access attempt to /hc by ${interaction.user.tag}`);
@@ -2048,7 +2053,7 @@ async function handleHealthchecks(interaction) {
     }
 
     const subcommand = interaction.options.getSubcommand();
-    logger.debug(`[hc] Subcommand: ${subcommand}`);
+    logger.info(`[hc] Subcommand: ${subcommand}`);
 
     switch (subcommand) {
         case 'overview':
