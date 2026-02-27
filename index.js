@@ -77,7 +77,7 @@ async function main() {
         const DailySubmission = require('./modules/models/DailySubmission');
 
         const app = express();
-        app.set('trust proxy', 1); 
+        app.set('trust proxy', 1);
         const port = process.env.PORT || 3000;
 
         // Rate limiter for frontend catch-all route
@@ -183,6 +183,15 @@ async function main() {
                 ]
             });
 
+            // WebSocket Debug listeners
+            client.ws.on('HELLO', () => logger.info('[DEBUG] WS: Received HELLO from gateway'));
+            client.ws.on('READY', () => logger.info('[DEBUG] WS: Received READY from gateway'));
+            client.ws.on('RESUMED', () => logger.info('[DEBUG] WS: Session RESUMED'));
+            client.on('shardReady', (id) => logger.info(`[DEBUG] Shard ${id} ready`));
+            client.on('shardError', (error) => logger.error('[DEBUG] Shard error:', error));
+            client.on('shardDisconnect', (event, id) => logger.warn(`[DEBUG] Shard ${id} disconnected:`, event));
+            client.on('shardReconnecting', (id) => logger.warn(`[DEBUG] Shard ${id} reconnecting`));
+
             // Register ready listener BEFORE login
             client.once(Events.ClientReady, async (c) => {
                 logger.info(`[DEBUG] Discord ClientReady event fired. Logged in as ${c.user.tag}`);
@@ -224,7 +233,16 @@ async function main() {
 
             logger.info('Logging in to Discord...');
             client.login(config.token)
-                .then(() => logger.info('Discord login() promise resolved'))
+                .then(() => {
+                    logger.info('Discord login() promise resolved');
+                    setTimeout(() => {
+                        logger.info(`[DEBUG] Client ready state after 30s: ${client.isReady()}`);
+                        if (client.ws) {
+                            logger.info(`[DEBUG] WebSocket status: ${client.ws.status}`);
+                            logger.info(`[DEBUG] WebSocket ping: ${client.ws.ping}`);
+                        }
+                    }, 30000);
+                })
                 .catch(err => logger.error('Discord login() promise rejected:', err));
 
             logger.info('Discord login attempt initiated (non-blocking)');

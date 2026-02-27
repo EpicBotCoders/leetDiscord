@@ -5,7 +5,13 @@ require('dotenv').config();
 
 async function loadConfig() {
     // Only token is kept in memory, everything else is in MongoDB
-    return { token: process.env.DISCORD_TOKEN };
+    const token = process.env.DISCORD_TOKEN;
+    if (token) {
+        logger.info(`[DEBUG] Token loaded, ends with: ...${token.slice(-4)}`);
+    } else {
+        logger.info('[DEBUG] Token is absent or undefined');
+    }
+    return { token };
 }
 
 async function getGuildConfig(guildId) {
