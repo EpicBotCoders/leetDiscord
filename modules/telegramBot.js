@@ -93,7 +93,12 @@ async function startTelegramBot() {
         });
 
         bot.on('polling_error', (error) => {
-            logger.error('Telegram polling error:', error);
+            if (error.code === 'ETELEGRAM' && error.response && error.response.statusCode === 409) {
+                logger.warn('Telegram polling conflict (409): Another instance is running. Stopping polling for this instance to prevent conflicts.');
+                bot.stopPolling().catch(err => logger.error('Error stopping polling:', err));
+            } else {
+                logger.error('Telegram polling error:', error);
+            }
         });
 
         logger.info('Telegram Bot started successfully');
