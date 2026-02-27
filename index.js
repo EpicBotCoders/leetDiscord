@@ -172,6 +172,7 @@ async function main() {
             logger.warn('DISCORD_TOKEN not found. Discord bot will not start.');
         } else {
             logger.info('Initializing Discord client...');
+            const { Events } = require('discord.js');
             client = new Client({
                 intents: [
                     GatewayIntentBits.Guilds,
@@ -181,18 +182,34 @@ async function main() {
                 ]
             });
 
-            client.once('ready', async () => {
+            // Register ready listener BEFORE login
+            client.once(Events.ClientReady, async (c) => {
+                logger.info(`[DEBUG] Discord ClientReady event fired. Logged in as ${c.user.tag}`);
                 try {
-                    logger.info('Discord Bot is ready!');
-                    logger.info(`Logged in as ${client.user.tag}`);
-                    await registerCommands(client.application.id);
-                    await initializeScheduledTasks(client);
+                    const appId = c.application?.id;
+                    if (!appId) {
+                        logger.error('CRITICAL: Application ID not found on ready.');
+                        return;
+                    }
+
+                    logger.info('Step 1: Registering commands...');
+                    await registerCommands(appId);
+
+                    logger.info('Step 2: Initializing scheduled tasks...');
+                    await initializeScheduledTasks(c);
+
+                    logger.info('Step 3: Initializing autocomplete cache...');
                     await initializeAutocompleteCache();
+
                     logger.info('Discord initialization complete');
                     logger.info("============ BOT IS READY ============");
                 } catch (error) {
-                    logger.error('Error during Discord initialization:', error);
+                    logger.error('Error during Discord ready initialization:', error);
                 }
+            });
+
+            client.on('interactionCreate', async interaction => {
+                await handleInteraction(interaction);
             });
 
             client.on('guildCreate', async (guild) => {
@@ -200,19 +217,22 @@ async function main() {
                 await sendWelcomeMessage(guild);
             });
 
-            client.on('interactionCreate', async interaction => {
-                await handleInteraction(interaction);
+            client.on('error', error => {
+                logger.error('Discord Client Error:', error);
             });
 
             logger.info('Logging in to Discord...');
-            await client.login(config.token);
-            logger.info('Discord login attempt initiated');
+            client.login(config.token)
+                .then(() => logger.info('Discord login() promise resolved'))
+                .catch(err => logger.error('Discord login() promise rejected:', err));
+
+            logger.info('Discord login attempt initiated (non-blocking)');
         }
 
         // Start Telegram Bot
-        logger.info('Starting Telegram bot...');
+        logger.info('Moving to Telegram bot initialization...');
         await startTelegramBot();
-        // startTelegramBot has its own success log
+        logger.info('Telegram bot initialization flow complete');
 
         // Setup graceful shutdown handlers
         setupGracefulShutdown(client, server);
