@@ -77,6 +77,7 @@ async function main() {
         const DailySubmission = require('./modules/models/DailySubmission');
 
         const app = express();
+        app.set('trust proxy', 1); 
         const port = process.env.PORT || 3000;
 
         // Rate limiter for frontend catch-all route
