@@ -26,7 +26,7 @@ const { Client, GatewayIntentBits, PermissionsBitField } = require('discord.js')
 const { connectDB } = require('../modules/models/db');
 const Guild = require('../modules/models/Guild');
 const { getLeetCodeContests } = require('../modules/apiUtils');
-const { formatLeetCodeContestEmbed } = require('../modules/interactionHandler');
+const { formatLeetCodeContestEmbed } = require('../modules/utils/embeds');
 const logger = require('../modules/logger');
 
 async function runBroadcast(client) {

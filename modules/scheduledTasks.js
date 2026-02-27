@@ -1,5 +1,5 @@
 const { getLeetCodeContests } = require('./apiUtils');
-const { formatLeetCodeContestEmbed } = require('./interactionHandler');
+const { formatLeetCodeContestEmbed } = require('./utils/embeds');
 // Schedule contest reminder for all opted-in guilds (every Friday 16:00 UTC)
 // The logic is separated so it can be invoked directly in tests.
 async function performContestReminder(client) {

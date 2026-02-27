@@ -57,56 +57,23 @@ async function sendWelcomeMessage(guild) {
 
 async function main() {
     let client = null;
+    let server = null;
 
     try {
-        // Connect to MongoDB first
+        logger.info('Starting LeetDiscord Bot initialization...');
+
+        // 1. Connect to MongoDB
         await connectDB();
+        // Logger inside connectDB already logs "Connected to MongoDB Atlas"
 
-        const config = await loadConfig();
-        client = new Client({
-            intents: [
-                GatewayIntentBits.Guilds,
-                GatewayIntentBits.GuildMessages,
-                GatewayIntentBits.GuildMembers,
-                GatewayIntentBits.MessageContent
-            ]
-        });
-
-        client.once('ready', async () => {
-            try {
-                logger.info('Bot is ready!');
-                await registerCommands(client.application.id);
-                await initializeScheduledTasks(client);
-                await initializeAutocompleteCache();
-                logger.info('Bot initialization complete');
-                logger.info("============ BOT IS READY ============")
-            } catch (error) {
-                logger.error('Error during bot initialization:', error);
-            }
-        });
-
-        client.on('guildCreate', async (guild) => {
-            logger.info(`Joined new guild: ${guild.name} (${guild.id})`);
-            await sendWelcomeMessage(guild);
-        });
-
-        client.on('interactionCreate', async interaction => {
-            await handleInteraction(interaction);
-        });
-
-        await client.login(config.token);
-
-        // Start Telegram Bot
-        await startTelegramBot();
-
-
-        // Express App setup
+        // 2. Start Express server IMMEDIATELY after DB connection
+        // This is critical for Render to detect an open port as soon as possible
+        logger.info('Initializing Express server...');
         const express = require('express');
         const cors = require('cors');
         const path = require('path');
         const RateLimit = require('express-rate-limit');
         const Guild = require('./modules/models/Guild');
-
         const DailySubmission = require('./modules/models/DailySubmission');
 
         const app = express();
@@ -121,18 +88,17 @@ async function main() {
         app.use(cors());
         app.use(express.static(path.join(__dirname, 'frontend/out')));
 
+        // Health check endpoint (moved up for immediate availability)
+        app.get('/api/health', (req, res) => res.send('Alive'));
+
         // API Endpoints
         app.get('/api/stats', async (req, res) => {
             try {
                 const totalGuilds = await Guild.countDocuments();
                 const totalSubmissions = await DailySubmission.countDocuments();
 
-                // Calculate total users across all guilds
-                // Since users are in a Map in each guild document, we need to aggregate
                 const guilds = await Guild.find({}, 'users');
-                let totalUsers = 0;
                 const uniqueUsers = new Set();
-
                 for (const guild of guilds) {
                     if (guild.users) {
                         for (const userId of guild.users.keys()) {
@@ -140,11 +106,10 @@ async function main() {
                         }
                     }
                 }
-                totalUsers = uniqueUsers.size;
 
                 res.json({
                     guilds: totalGuilds,
-                    users: totalUsers,
+                    users: uniqueUsers.size,
                     submissions: totalSubmissions,
                     version: process.env.npm_package_version || '2.2.0'
                 });
@@ -162,7 +127,6 @@ async function main() {
                     return res.status(404).json({ error: 'Guild not found' });
                 }
 
-                // Transform data for frontend
                 const leaderboard = [];
                 for (const [userId, username] of guild.users) {
                     const stats = guild.userStats.get(userId);
@@ -170,14 +134,11 @@ async function main() {
                         leaderboard.push({
                             userId,
                             username,
-                            ...stats.toObject() // Convert Mongoose subdocument to object
+                            ...stats.toObject()
                         });
                     }
                 }
-
-                // Sort by total active days (descending)
                 leaderboard.sort((a, b) => b.totalActiveDays - a.totalActiveDays);
-
                 res.json(leaderboard);
             } catch (error) {
                 logger.error('API Error:', error);
@@ -185,33 +146,78 @@ async function main() {
             }
         });
 
-        // Catch-all to serve index.html for client-side routing
-        // In Express 5, '*' is not a valid wildcard. using regex instead.
+        // Catch-all to serve index.html
         app.get(/(.*)/, frontendLimiter, (req, res) => {
             res.sendFile(path.join(__dirname, 'frontend/out/index.html'));
         });
 
-        const server = app.listen(port, "0.0.0.0",  () => {
+        server = app.listen(port, "0.0.0.0", () => {
             logger.info(`Express server listening on port ${port}`);
         });
 
         // Self-ping to prevent sleeping (Render free tier)
         setInterval(() => {
             http.get(`http://localhost:${port}/api/health`, (res) => {
-                // consume response
                 res.resume();
             }).on('error', (e) => {
-                // ignore error
+                // ignore
             });
-        }, 60000); // Ping every 1 minute
+        }, 60000);
 
-        // Health check endpoint
-        app.get('/api/health', (req, res) => res.send('Alive'));
+        // 3. Initialize Bots
+        logger.info('Starting bot components...');
+        const config = await loadConfig();
+
+        if (!config.token) {
+            logger.warn('DISCORD_TOKEN not found. Discord bot will not start.');
+        } else {
+            logger.info('Initializing Discord client...');
+            client = new Client({
+                intents: [
+                    GatewayIntentBits.Guilds,
+                    GatewayIntentBits.GuildMessages,
+                    GatewayIntentBits.GuildMembers,
+                    GatewayIntentBits.MessageContent
+                ]
+            });
+
+            client.once('ready', async () => {
+                try {
+                    logger.info('Discord Bot is ready!');
+                    logger.info(`Logged in as ${client.user.tag}`);
+                    await registerCommands(client.application.id);
+                    await initializeScheduledTasks(client);
+                    await initializeAutocompleteCache();
+                    logger.info('Discord initialization complete');
+                    logger.info("============ BOT IS READY ============");
+                } catch (error) {
+                    logger.error('Error during Discord initialization:', error);
+                }
+            });
+
+            client.on('guildCreate', async (guild) => {
+                logger.info(`Joined new guild: ${guild.name} (${guild.id})`);
+                await sendWelcomeMessage(guild);
+            });
+
+            client.on('interactionCreate', async interaction => {
+                await handleInteraction(interaction);
+            });
+
+            logger.info('Logging in to Discord...');
+            await client.login(config.token);
+            logger.info('Discord login attempt initiated');
+        }
+
+        // Start Telegram Bot
+        logger.info('Starting Telegram bot...');
+        await startTelegramBot();
+        // startTelegramBot has its own success log
 
         // Setup graceful shutdown handlers
         setupGracefulShutdown(client, server);
     } catch (error) {
-        logger.error('Failed to start the bot:', error);
+        logger.error('CRITICAL: Failed to start the service:', error);
         process.exit(1);
     }
 }
