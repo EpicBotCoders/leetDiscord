@@ -246,6 +246,31 @@ async function main() {
                 .catch(err => logger.error('Discord login() promise rejected:', err));
 
             logger.info('Discord login attempt initiated (non-blocking)');
+
+            const https = require('https');
+
+            // Check if Discord REST API is reachable at all
+            https.get('https://discord.com/api/v10/gateway', (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => logger.info(`[DEBUG] Discord REST reachable, status: ${res.statusCode}, body: ${data}`));
+            }).on('error', (e) => {
+                logger.error(`[DEBUG] Discord REST unreachable: ${e.message} (code: ${e.code})`);
+            });
+
+            // Check raw TCP connectivity to the gateway host
+            const net = require('net');
+            const socket = net.createConnection({ host: 'gateway.discord.gg', port: 443 }, () => {
+                logger.info('[DEBUG] TCP connection to gateway.discord.gg:443 succeeded');
+                socket.destroy();
+            });
+            socket.on('error', (e) => {
+                logger.error(`[DEBUG] TCP connection to gateway.discord.gg:443 failed: ${e.message}`);
+            });
+            socket.setTimeout(10000, () => {
+                logger.error('[DEBUG] TCP connection to gateway.discord.gg:443 timed out');
+                socket.destroy();
+            });
         }
 
         // Start Telegram Bot
