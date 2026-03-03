@@ -10,6 +10,12 @@ registerFont(
   { family: 'Noto Sans' }
 );
 
+const fs = require('fs');
+console.log(
+  'Font exists:',
+  fs.existsSync(path.join(__dirname, '..', 'fonts', 'NotoSans-Regular.ttf'))
+);
+
 const { Chart } = require('chart.js');
 Chart.defaults.font.family = 'Noto Sans';
 
