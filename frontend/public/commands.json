@@ -348,6 +348,23 @@
     "hidden": false
   },
   {
+    "name": "broadcastlogs",
+    "description": "View recent broadcast logs (Bot Owner only)",
+    "options": [
+      {
+        "max_value": 10,
+        "min_value": 1,
+        "type": 4,
+        "name": "limit",
+        "description": "Number of recent logs to show (1–10, default 5)",
+        "required": false
+      }
+    ],
+    "category": "Admin",
+    "adminOnly": false,
+    "hidden": true
+  },
+  {
     "name": "broadcast",
     "description": "Broadcast a message to all guilds",
     "options": [

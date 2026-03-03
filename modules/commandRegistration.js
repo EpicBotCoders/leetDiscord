@@ -246,6 +246,19 @@ const commandDefinitions = [
         category: 'Admin',
         hidden: true,
         data: new SlashCommandBuilder()
+            .setName('broadcastlogs')
+            .setDescription('View recent broadcast logs (Bot Owner only)')
+            .addIntegerOption(option =>
+                option.setName('limit')
+                    .setDescription('Number of recent logs to show (1–10, default 5)')
+                    .setRequired(false)
+                    .setMinValue(1)
+                    .setMaxValue(10))
+    },
+    {
+        category: 'Admin',
+        hidden: true,
+        data: new SlashCommandBuilder()
             .setName('broadcast')
             .setDescription('Broadcast a message to all guilds')
             .addStringOption(option =>

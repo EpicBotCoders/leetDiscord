@@ -32,6 +32,11 @@ const broadcastLogSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    // Per-guild failure details
+    failedGuilds: [{
+        guildId: { type: String },
+        reason: { type: String }
+    }],
     // When the broadcast was sent
     sentAt: {
         type: Date,
