@@ -6,7 +6,7 @@ const logger = require('./logger');
 
 // Register font BEFORE creating canvas
 registerFont(
-  path.join(__dirname, 'fonts', 'NotoSans-Regular.ttf'),
+  path.join(__dirname, '..', 'fonts', 'NotoSans-Regular.ttf'),
   { family: 'Noto Sans' }
 );
 
