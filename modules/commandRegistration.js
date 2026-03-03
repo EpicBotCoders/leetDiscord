@@ -137,15 +137,16 @@ const commandDefinitions = [
         category: 'Monitoring',
         data: new SlashCommandBuilder()
             .setName('calendar')
-            .setDescription('Show recent LeetCode activity as a compact calendar')
-            .addIntegerOption(option =>
+            .setDescription('Show recent LeetCode activity as a visual chart')
+            .addStringOption(option =>
                 option.setName('range')
-                    .setDescription('Number of days to show')
+                    .setDescription('Time range to display')
                     .setRequired(false)
                     .addChoices(
-                        { name: 'Last 7 days', value: 7 },
-                        { name: 'Last 30 days', value: 30 },
-                        { name: 'Last 90 days', value: 90 }
+                        { name: 'Last 7 days', value: '7' },
+                        { name: 'Last 30 days', value: '30' },
+                        { name: 'Last 90 days', value: '90' },
+                        { name: 'Current month', value: 'current_month' }
                     ))
             .addStringOption(option =>
                 option.setName('username')

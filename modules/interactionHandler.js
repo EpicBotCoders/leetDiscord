@@ -45,6 +45,7 @@ const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfi
 const { commandDefinitions } = require('./commandRegistration');
 const { enhancedCheck, getUserCalendar, getBestDailySubmission, getDailySlug } = require('./apiUtils');
 const { updateGuildCronJobs, performDailyCheck } = require('./scheduledTasks');
+const { generateCalendarChart } = require('./chartGenerator');
 const logger = require('./logger');
 const { v4: uuidv4 } = require('uuid');
 const { ChannelType, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
@@ -1092,52 +1093,25 @@ async function handleConfig(interaction) {
     }
 }
 
-function buildCalendarHeatmap(calendarData, rangeDays) {
-    const submissionCalendar = calendarData?.submissionCalendar || calendarData?.calendar;
-    if (!submissionCalendar || typeof submissionCalendar !== 'object') {
-        return null;
-    }
-
-    // Build a set of ISO date strings (YYYY-MM-DD) that had activity
-    const activeDates = new Set();
-    for (const [key, count] of Object.entries(submissionCalendar)) {
-        if (!count) continue;
-        const timestamp = parseInt(key, 10);
-        if (Number.isNaN(timestamp)) continue;
-        const date = new Date(timestamp * 1000);
-        const iso = date.toISOString().slice(0, 10);
-        activeDates.add(iso);
-    }
-
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-
-    const blocks = [];
-
-    for (let i = rangeDays - 1; i >= 0; i--) {
-        const d = new Date(today);
-        d.setDate(today.getDate() - i);
-        const iso = d.toISOString().slice(0, 10);
-        const active = activeDates.has(iso);
-        blocks.push(active ? '🟩' : '⬛');
-    }
-
-    // Group into weeks for a cleaner grid (oldest week on top)
-    const rows = [];
-    for (let i = 0; i < blocks.length; i += 7) {
-        rows.push(blocks.slice(i, i + 7).join(' '));
-    }
-
-    return rows.join('\n');
-}
-
 async function handleCalendar(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
-        const rangeOption = interaction.options.getInteger('range') || 7;
-        const allowedRanges = [7, 30, 90];
-        const range = allowedRanges.includes(rangeOption) ? rangeOption : 7;
+        const rangeOption = interaction.options.getString('range') || '7';
+
+        // Resolve range to a number of days and a display label
+        let range;
+        let rangeLabel;
+        if (rangeOption === 'current_month') {
+            const now = new Date();
+            // Days elapsed so far in the current UTC month (including today)
+            range = now.getUTCDate();
+            const monthName = now.toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
+            rangeLabel = `${monthName} ${now.getUTCFullYear()}`;
+        } else {
+            range = [7, 30, 90].includes(parseInt(rangeOption, 10)) ? parseInt(rangeOption, 10) : 7;
+            rangeLabel = `Last ${range} days`;
+        }
 
         const usernameOption = interaction.options.getString('username');
         const guildUsers = await getGuildUsers(interaction.guildId);
@@ -1173,7 +1147,8 @@ async function handleCalendar(interaction) {
             return;
         }
 
-        const heatmap = buildCalendarHeatmap(calendarData, range);
+
+        const chartAttachment = await generateCalendarChart(targetUsername, calendarData, range);
 
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0);
@@ -1182,43 +1157,56 @@ async function handleCalendar(interaction) {
 
         const mention = targetDiscordId ? `<@${targetDiscordId}>` : targetUsername;
 
+        const submissionCalendar = calendarData?.submissionCalendar || calendarData?.calendar || {};
+        let activeDaysInRange = 0;
+        const startTimeTs = Math.floor(start.getTime() / 1000);
+        const endTimeTs = Math.floor(today.getTime() / 1000) + 86399; // End of today
+
+        for (const [key, count] of Object.entries(submissionCalendar)) {
+            const ts = parseInt(key, 10);
+            if (ts >= startTimeTs && ts <= endTimeTs && count > 0) {
+                activeDaysInRange++;
+            }
+        }
+
         const fields = [
             {
                 name: '🔥 Current Streak',
-                value: `${calendarData.streak || 0} days`,
+                value: `**${calendarData.streak || 0}** days`,
                 inline: true
             },
             {
-                name: '📅 Total Active Days',
-                value: `${calendarData.totalActiveDays || 0}`,
+                name: `📅 Active Days (${range}d)`,
+                value: `**${activeDaysInRange}** / ${range}`,
                 inline: true
             },
             {
-                name: '📆 Active Years',
-                value: calendarData.activeYears && calendarData.activeYears.length > 0
-                    ? calendarData.activeYears.join(', ')
-                    : 'N/A',
+                name: '📆 Total Active',
+                value: `**${calendarData.totalActiveDays || 0}**`,
                 inline: true
-            },
-            {
-                name: `Last ${range} days (${start.toISOString().slice(0, 10)} → ${today.toISOString().slice(0, 10)})`,
-                value: heatmap || 'No detailed calendar data available for this user.',
-                inline: false
             }
         ];
 
         const embed = {
             color: 0x5865F2,
             title: `🗓️ Activity Calendar for ${targetUsername}`,
-            description: `Recent LeetCode activity for ${mention}`,
+            description: `Showing LeetCode activity for **${rangeLabel}** (${start.toISOString().slice(0, 10)} → ${today.toISOString().slice(0, 10)}) for ${mention}`,
             fields,
+            image: {
+                url: 'attachment://calendar-chart.png'
+            },
             footer: {
-                text: 'Blocks: 🟩 active day, ⬛ no activity (based on LeetCode calendar)'
+                text: 'Chart colors: Green (Active Day), Gray (No Activity)'
             },
             timestamp: new Date()
         };
 
-        await interaction.editReply({ embeds: [embed] });
+        const response = { embeds: [embed] };
+        if (chartAttachment) {
+            response.files = [chartAttachment];
+        }
+
+        await interaction.editReply(response);
     } catch (error) {
         logger.error('Error in handleCalendar:', error);
         await interaction.editReply('❌ An error occurred while fetching calendar data. Please try again later.');
