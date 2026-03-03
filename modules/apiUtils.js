@@ -33,13 +33,16 @@ const DailySubmission = require('./models/DailySubmission');
 const cache = {
     dailySlug: { value: null, expiry: 0 },
     problemDetails: new Map(),
-    userSubmissions: new Map(),
-    userCalendar: new Map()
+    userCalendar: new Map(),
+    userProfile: new Map(),
+    userBadges: new Map()
 };
 
 const TTL = {
     userSubmissions: 60 * 1000,        // 1 minute
-    userCalendar: 24 * 60 * 60 * 1000  // 1 day
+    userCalendar: 24 * 60 * 60 * 1000, // 1 day
+    userProfile: 60 * 60 * 1000,       // 1 hour
+    userBadges: 24 * 60 * 60 * 1000    // 1 day
 };
 
 function getNextUtcMidnightTimestamp() {
@@ -379,10 +382,54 @@ async function getBestDailySubmission(username, dailySlug) {
     }
 }
 
+// Fetch user's profile data with cache
+async function getUserProfile(username) {
+    const now = Date.now();
+    const cached = cache.userProfile.get(username);
+
+    if (cached && now - cached.timestamp < TTL.userProfile) {
+        logger.info(`Returning cached profile for ${username}`);
+        return cached.value;
+    }
+
+    try {
+        logger.info(`Fetching profile for user: ${username}`);
+        const res = await axios.get(`https://leetcode-api-pied.vercel.app/user/${username}`);
+        cache.userProfile.set(username, { value: res.data, timestamp: now });
+        return res.data;
+    } catch (error) {
+        logger.error(`Error fetching profile for user: ${username}`, error);
+        throw error;
+    }
+}
+
+// Fetch user's badges with cache
+async function getUserBadges(username) {
+    const now = Date.now();
+    const cached = cache.userBadges.get(username);
+
+    if (cached && now - cached.timestamp < TTL.userBadges) {
+        logger.info(`Returning cached badges for ${username}`);
+        return cached.value;
+    }
+
+    try {
+        logger.info(`Fetching badges for user: ${username}`);
+        const res = await axios.get(`https://leetcode-api-pied.vercel.app/user/${username}/badges`);
+        cache.userBadges.set(username, { value: res.data, timestamp: now });
+        return res.data;
+    } catch (error) {
+        logger.error(`Error fetching badges for user: ${username}`, error);
+        throw error;
+    }
+}
+
 module.exports = {
     getDailySlug,
     getUserSubmissions,
     getUserCalendar,
+    getUserProfile,
+    getUserBadges,
     checkUser,
     enhancedCheck,
     getBestDailySubmission,

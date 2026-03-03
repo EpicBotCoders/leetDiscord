@@ -244,14 +244,14 @@ async function generateCalendarChart(username, calendarData, rangeDays) {
         // instead of a tiny canvas.
         const totalWeeks = Math.max(...matrixData.map(d => d.x)) + 1;
 
-        const padLeft    = 56;   // room for day labels
-        const padRight   = 24;
-        const padTop     = 60;   // room for title + month labels
-        const padBottom  = 30;
-        const cellGap    = 4;
+        const padLeft = 56;   // room for day labels
+        const padRight = 24;
+        const padTop = 60;   // room for title + month labels
+        const padBottom = 30;
+        const cellGap = 4;
         const MIN_CANVAS_WIDTH = 500;
-        const MAX_CELL_SIZE    = 40;
-        const MIN_CELL_SIZE    = 14;
+        const MAX_CELL_SIZE = 40;
+        const MIN_CELL_SIZE = 14;
 
         // Fill at least MIN_CANVAS_WIDTH: scale cell size up for few weeks,
         // scale down gracefully for many weeks (90-day / 365-day ranges).
@@ -266,7 +266,7 @@ async function generateCalendarChart(username, calendarData, rangeDays) {
         const step = cellSize + cellGap;
 
         // Canvas is at least MIN_CANVAS_WIDTH wide; grows for large day ranges.
-        const canvasWidth  = Math.max(MIN_CANVAS_WIDTH, padLeft + totalWeeks * step + padRight);
+        const canvasWidth = Math.max(MIN_CANVAS_WIDTH, padLeft + totalWeeks * step + padRight);
         const canvasHeight = padTop + 7 * step + padBottom;
 
         const heatmapCanvas = new ChartJSNodeCanvas({
@@ -302,7 +302,7 @@ async function generateCalendarChart(username, calendarData, rangeDays) {
                     borderColor: '#0d1117',
                     borderWidth: 2,
                     borderRadius: 3,
-                    width:  () => cellSize,
+                    width: () => cellSize,
                     height: () => cellSize,
                 }]
             },
@@ -371,4 +371,169 @@ async function generateCalendarChart(username, calendarData, rangeDays) {
     }
 }
 
-module.exports = { generateSubmissionChart, generateCalendarChart };
+/**
+ * Generate a badge showcase image using raw canvas drawing.
+ * Displays each badge icon + display name in a dark-themed grid.
+ *
+ * @param {string} username - LeetCode username
+ * @param {Array}  badges   - Array of badge objects from /user/{username}/badges
+ * @returns {Promise<AttachmentBuilder|null>}
+ */
+async function generateBadgeChart(username, badges) {
+    if (!badges || badges.length === 0) return null;
+
+    try {
+        const { createCanvas, loadImage } = require('canvas');
+
+        // ── Layout constants ─────────────────────────────────────────────────
+        const CELL_W = 160;
+        const CELL_H = 200;
+        const PAD = 20;
+        const HEADER_H = 54;
+        const ICON_SIZE = 90;
+        const ICON_Y_OFF = 20;
+
+        // ✅ FIX: scale columns dynamically to avoid an absurdly tall/narrow image
+        // Targets a roughly 16:9-ish aspect ratio by solving for COLS ≈ sqrt(n * CELL_W/CELL_H * 16/9)
+        const n = badges.length;
+        const COLS = n <= 5 ? n
+            : n <= 15 ? 5
+                : n <= 35 ? 7
+                    : n <= 60 ? 9
+                        : 10;           // 10 cols max (~1760px wide) for 61+ badges
+
+        const ROWS = Math.ceil(n / COLS);
+
+        // ✅ Still enforce a minimum header width so title + username never collide
+        const MIN_CANVAS_W = 420;
+        const canvasW = Math.max(COLS * CELL_W + PAD * 2, MIN_CANVAS_W);
+        const canvasH = ROWS * CELL_H + PAD * 2 + HEADER_H;
+
+        const canvas = createCanvas(canvasW, canvasH);
+        const ctx = canvas.getContext('2d');
+
+        // ── Background ───────────────────────────────────────────────────────
+        ctx.fillStyle = '#0d1117';
+        ctx.fillRect(0, 0, canvasW, canvasH);
+
+        // Subtle horizontal gradient overlay
+        const bgGrad = ctx.createLinearGradient(0, 0, canvasW, 0);
+        bgGrad.addColorStop(0, 'rgba(255,161,22,0.06)');
+        bgGrad.addColorStop(0.5, 'rgba(255,255,255,0.02)');
+        bgGrad.addColorStop(1, 'rgba(255,161,22,0.06)');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+
+        // ── Header ───────────────────────────────────────────────────────────
+        ctx.fillStyle = '#FFA116';
+        ctx.font = 'bold 22px "Noto Sans"';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🏅  Badges', PAD, HEADER_H / 2);
+
+        ctx.fillStyle = '#8b949e';
+        ctx.font = '14px "Noto Sans"';
+        ctx.textAlign = 'right';
+        ctx.fillText(username, canvasW - PAD, HEADER_H / 2);
+
+        // Divider
+        ctx.strokeStyle = '#30363d';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(PAD, HEADER_H);
+        ctx.lineTo(canvasW - PAD, HEADER_H);
+        ctx.stroke();
+
+        // ── Badge cells ──────────────────────────────────────────────────────
+        const BASE_URL = 'https://leetcode.com';
+
+        // Sort: newest first
+        const sorted = [...badges].sort((a, b) => new Date(b.creationDate) - new Date(a.creationDate));
+
+        await Promise.all(sorted.map(async (badge, idx) => {
+            const col = idx % COLS;
+            const row = Math.floor(idx / COLS);
+
+            const cellX = PAD + col * CELL_W;
+            const cellY = HEADER_H + PAD + row * CELL_H;
+
+            // Cell background card
+            ctx.fillStyle = '#161b22';
+            roundRect(ctx, cellX + 4, cellY + 4, CELL_W - 8, CELL_H - 8, 10);
+            ctx.fill();
+
+            // Icon area highlight
+            ctx.fillStyle = 'rgba(255,161,22,0.05)';
+            roundRect(ctx, cellX + 4, cellY + 4, CELL_W - 8, ICON_SIZE + ICON_Y_OFF * 2, 10);
+            ctx.fill();
+
+            // Badge icon
+            const iconUrl = badge.icon.startsWith('http') ? badge.icon : `${BASE_URL}${badge.icon}`;
+            try {
+                const img = await loadImage(iconUrl);
+                const ix = cellX + (CELL_W - ICON_SIZE) / 2;
+                const iy = cellY + ICON_Y_OFF;
+                ctx.drawImage(img, ix, iy, ICON_SIZE, ICON_SIZE);
+            } catch {
+                // Placeholder circle if image fails
+                ctx.fillStyle = '#30363d';
+                ctx.beginPath();
+                ctx.arc(
+                    cellX + CELL_W / 2,
+                    cellY + ICON_Y_OFF + ICON_SIZE / 2,
+                    ICON_SIZE / 2, 0, Math.PI * 2
+                );
+                ctx.fill();
+
+                ctx.fillStyle = '#8b949e';
+                ctx.font = '30px "Noto Sans"';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('🏅', cellX + CELL_W / 2, cellY + ICON_Y_OFF + ICON_SIZE / 2);
+            }
+
+            // Badge display name (truncate if too long)
+            const label = badge.displayName || badge.name || 'Badge';
+            const maxChars = 18;
+            const short = label.length > maxChars ? label.slice(0, maxChars - 1) + '…' : label;
+
+            ctx.fillStyle = '#e6edf3';
+            ctx.font = 'bold 12px "Noto Sans"';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText(short, cellX + CELL_W / 2, cellY + ICON_Y_OFF + ICON_SIZE + 10);
+
+            // Creation date
+            if (badge.creationDate) {
+                ctx.fillStyle = '#8b949e';
+                ctx.font = '11px "Noto Sans"';
+                ctx.textBaseline = 'top';
+                ctx.fillText(badge.creationDate, cellX + CELL_W / 2, cellY + ICON_Y_OFF + ICON_SIZE + 30);
+            }
+        }));
+
+        return new AttachmentBuilder(canvas.toBuffer('image/png'), { name: 'badges.png' });
+    } catch (error) {
+        logger.error('Error generating badge chart:', error);
+        return null;
+    }
+}
+
+/**
+ * Helper: draw a rounded rectangle path (does not stroke/fill).
+ */
+function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
+module.exports = { generateSubmissionChart, generateCalendarChart, generateBadgeChart };

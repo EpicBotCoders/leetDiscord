@@ -40,17 +40,18 @@ async function handleContest(interaction) {
         await interaction.editReply('❌ Failed to fetch contest details. Please try again later.');
     }
 }
-const { formatLeetCodeContestEmbed } = require('./utils/embeds');
+const { formatLeetCodeContestEmbed, formatUserProfileEmbed } = require('./utils/embeds');
 const { addUser, removeUser, getGuildUsers, getGuildConfig, initializeGuildConfig, updateGuildChannel, addCronJob, removeCronJob, listCronJobs, setTelegramToken, toggleTelegramUpdates, getTelegramUser, getAllGuildConfigs, setAdminRole, getAdminRole, toggleBroadcast, getBroadcastEnabled } = require('./configManager');
 const { commandDefinitions } = require('./commandRegistration');
-const { enhancedCheck, getUserCalendar, getBestDailySubmission, getDailySlug } = require('./apiUtils');
+const { enhancedCheck, getUserCalendar, getBestDailySubmission, getDailySlug, getUserProfile, getUserBadges } = require('./apiUtils');
 const { updateGuildCronJobs, performDailyCheck } = require('./scheduledTasks');
-const { generateCalendarChart } = require('./chartGenerator');
+const { generateCalendarChart, generateBadgeChart } = require('./chartGenerator');
 const logger = require('./logger');
 const { v4: uuidv4 } = require('uuid');
 const { ChannelType, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const TelegramUser = require('./models/TelegramUser');
 const DailySubmission = require('./models/DailySubmission');
+const UserProfile = require('./models/UserProfile');
 
 // Cache for autocomplete data - updated only when members or cron jobs are added/removed
 const usernameCache = new Map(); // Map<guildId, string[]> - array of usernames
@@ -184,6 +185,7 @@ async function handleAutocomplete(interaction) {
         switch (commandName) {
             case 'removeuser':
             case 'daily':
+            case 'profile':
                 await handleUsernameAutocomplete(interaction);
                 break;
             case 'managecron':
@@ -387,6 +389,9 @@ async function handleInteraction(interaction) {
                 break;
             case 'daily':
                 await handleDaily(interaction);
+                break;
+            case 'profile':
+                await handleProfile(interaction);
                 break;
             case 'forcecheck':
                 await handleForceCheck(interaction);
@@ -1807,6 +1812,82 @@ async function handleToggleBroadcast(interaction) {
     } catch (error) {
         logger.error('Error in handleToggleBroadcast:', error);
         await interaction.editReply('An error occurred while toggling broadcasts.');
+    }
+}
+
+async function handleProfile(interaction) {
+    await interaction.deferReply();
+    let username = interaction.options.getString('username');
+
+    if (!username) {
+        const guildUsers = await getGuildUsers(interaction.guildId);
+        // Find LeetCode username associated with this Discord user
+        for (const [lc, discordId] of Object.entries(guildUsers)) {
+            if (discordId === interaction.user.id) {
+                username = lc;
+                break;
+            }
+        }
+    }
+
+    if (!username) {
+        await interaction.editReply('You are not registered in this server. Please use `/adduser` or specify a username.');
+        return;
+    }
+
+    try {
+        const [profileData, badgesData] = await Promise.all([
+            getUserProfile(username),
+            getUserBadges(username)
+        ]);
+
+        if (!profileData || !profileData.profile) {
+            await interaction.editReply(`❌ Could not find LeetCode profile for **${username}**.`);
+            return;
+        }
+
+        // Save/Update in MongoDB
+        const { profile, submitStats } = profileData;
+        const { badges } = badgesData;
+
+        // Map stats to matching expected schema if needed
+        const statsObj = {};
+        if (submitStats && submitStats.acSubmissionNum) {
+            submitStats.acSubmissionNum.forEach(s => {
+                statsObj[s.difficulty.toLowerCase()] = { count: s.count, submissions: s.submissions };
+            });
+        }
+
+        await UserProfile.findOneAndUpdate(
+            { username },
+            {
+                username,
+                displayName: profile.realName,
+                avatar: profile.userAvatar,
+                ranking: profile.ranking,
+                reputation: profile.reputation,
+                skillTags: profile.skillTags,
+                aboutMe: profile.aboutMe,
+                stats: statsObj,
+                badges,
+                lastUpdated: new Date()
+            },
+            { upsert: true, new: true }
+        );
+
+        const embed = formatUserProfileEmbed(profileData, badgesData);
+
+        // Generate badge chart image if there are badges
+        const badgeAttachment = await generateBadgeChart(username, badges);
+        if (badgeAttachment) {
+            embed.image = { url: 'attachment://badges.png' };
+            await interaction.editReply({ embeds: [embed], files: [badgeAttachment] });
+        } else {
+            await interaction.editReply({ embeds: [embed] });
+        }
+    } catch (error) {
+        logger.error(`Error handling profile for ${username}:`, error);
+        await interaction.editReply('❌ Failed to fetch LeetCode profile data. Please try again later.');
     }
 }
 

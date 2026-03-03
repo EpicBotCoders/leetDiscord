@@ -184,6 +184,17 @@ const commandDefinitions = [
                     .setRequired(false))
     },
     {
+        category: 'Monitoring',
+        data: new SlashCommandBuilder()
+            .setName('profile')
+            .setDescription('View detailed LeetCode profile and badges')
+            .addStringOption(option =>
+                option.setName('username')
+                    .setDescription('LeetCode username to view (defaults to you)')
+                    .setRequired(false)
+                    .setAutocomplete(true))
+    },
+    {
         category: 'Information',
         data: new SlashCommandBuilder()
             .setName('botinfo')
