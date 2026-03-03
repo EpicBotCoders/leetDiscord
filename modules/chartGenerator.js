@@ -1,6 +1,17 @@
+const path = require('path');
+const { registerFont } = require('canvas');
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
 const { AttachmentBuilder } = require('discord.js');
 const logger = require('./logger');
+
+// Register font BEFORE creating canvas
+registerFont(
+  path.join(__dirname, 'fonts', 'NotoSans-Regular.ttf'),
+  { family: 'Noto Sans' }
+);
+
+const { Chart } = require('chart.js');
+Chart.defaults.font.family = 'Noto Sans';
 
 // Chart configuration
 const width = 800;
@@ -55,6 +66,9 @@ async function generateSubmissionChart(submissionsData) {
                 ]
             },
             options: {
+                font: {
+                    family: 'Noto Sans'
+                },
                 responsive: true,
                 interaction: {
                     mode: 'index',
