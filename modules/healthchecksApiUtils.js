@@ -126,6 +126,27 @@ function formatTimeAgo(isoTimestamp) {
 }
 
 /**
+ * Format time until a future timestamp (e.g., "in 5m", "in 2h")
+ * Returns "overdue" if the timestamp is already in the past.
+ */
+function formatTimeUntil(isoTimestamp) {
+    if (!isoTimestamp) return 'N/A';
+
+    const date = new Date(isoTimestamp);
+    const now = new Date();
+    const secondsUntil = Math.floor((date - now) / 1000);
+
+    if (secondsUntil < 0) return 'overdue';
+    if (secondsUntil < 60) return `in ${secondsUntil}s`;
+    const minutesUntil = Math.floor(secondsUntil / 60);
+    if (minutesUntil < 60) return `in ${minutesUntil}m`;
+    const hoursUntil = Math.floor(minutesUntil / 60);
+    if (hoursUntil < 24) return `in ${hoursUntil}h`;
+    const daysUntil = Math.floor(hoursUntil / 24);
+    return `in ${daysUntil}d`;
+}
+
+/**
  * List all checks with caching
  */
 async function listChecks() {
@@ -373,5 +394,6 @@ module.exports = {
     getStatusEmoji,
     formatTime,
     formatTimeAgo,
+    formatTimeUntil,
     clearCache
 };

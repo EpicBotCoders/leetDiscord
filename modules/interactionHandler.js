@@ -2103,7 +2103,7 @@ async function handleHealthchecksOverview(interaction) {
     logger.debug('[hc] Defer reply sent for /hc overview');
 
     try {
-        const { listChecks, formatTimeAgo } = require('./healthchecksApiUtils');
+        const { listChecks, formatTimeAgo, formatTimeUntil } = require('./healthchecksApiUtils');
         logger.debug('[hc] Fetching checks list...');
         const checks = await listChecks();
         logger.debug(`[hc] Received ${checks.length} checks`);
@@ -2119,7 +2119,7 @@ async function handleHealthchecksOverview(interaction) {
 
         for (const check of checks) {
             const lastPing = formatTimeAgo(check.lastPing);
-            const nextPing = check.nextPing ? formatTimeAgo(new Date(check.nextPing)) : 'N/A';
+            const nextPing = check.nextPing ? formatTimeUntil(check.nextPing) : 'N/A';
 
             const name = check.name.substring(0, 18).padEnd(18);
             const status = `${check.statusEmoji} ${check.status}`.padEnd(8);
