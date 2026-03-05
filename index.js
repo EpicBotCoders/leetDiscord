@@ -149,6 +149,27 @@ async function main() {
             }
         });
 
+        // Hall of Fame endpoint
+        app.get('/api/hall-of-fame/:guildId', async (req, res) => {
+            try {
+                const { guildId } = req.params;
+                const { difficulty = 'All' } = req.query;
+                
+                const guild = await Guild.findOne({ guildId });
+                if (!guild) {
+                    return res.status(404).json({ error: 'Guild not found' });
+                }
+
+                const { buildHallOfFameData } = require('./modules/hallOfFameUtils');
+                const hallOfFameData = await buildHallOfFameData(guildId, difficulty);
+                
+                res.json(hallOfFameData);
+            } catch (error) {
+                logger.error('Hall of Fame API Error:', error);
+                res.status(500).json({ error: 'Internal Server Error' });
+            }
+        });
+
         // Catch-all to serve index.html
         app.get(/(.*)/, frontendLimiter, (req, res) => {
             res.sendFile(path.join(__dirname, 'frontend/out/index.html'));
