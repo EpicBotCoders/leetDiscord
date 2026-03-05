@@ -13,6 +13,7 @@ const { initializeScheduledTasks, stopAllCronJobs } = require('./modules/schedul
 const { forceOfflineStatsPanel } = require('./modules/statsPanel');
 const { startTelegramBot, stopTelegramBot } = require('./modules/telegramBot');
 const http = require('http');
+const rateLimit = require('express-rate-limit');
 
 async function sendWelcomeMessage(guild) {
     try {
@@ -124,7 +125,12 @@ async function main() {
             }
         });
 
-        app.get('/api/leaderboard/:guildId', async (req, res) => {
+        const apiLimiter = rateLimit({
+            windowMs: 15 * 60 * 1000, // 15 minutes
+            max: 100, // limit each IP to 100 API requests per windowMs
+        });
+
+        app.get('/api/leaderboard/:guildId', apiLimiter, async (req, res) => {
             try {
                 const { guildId } = req.params;
                 const guild = await Guild.findOne({ guildId });
@@ -152,7 +158,7 @@ async function main() {
         });
 
         // Get all guilds (for static generation)
-        app.get('/api/guilds', async (req, res) => {
+        app.get('/api/guilds', apiLimiter, async (req, res) => {
             try {
                 const guilds = await Guild.find({}, { guildId: 1 });
                 res.json(guilds);
@@ -163,7 +169,7 @@ async function main() {
         });
 
         // Hall of Fame endpoint
-        app.get('/api/hall-of-fame/:guildId', async (req, res) => {
+        app.get('/api/hall-of-fame/:guildId', apiLimiter, async (req, res) => {
             try {
                 const { guildId } = req.params;
                 const { difficulty = 'All' } = req.query;
