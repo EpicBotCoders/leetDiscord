@@ -384,6 +384,9 @@ async function handleInteraction(interaction) {
             case 'leaderboard':
                 await handleLeaderboard(interaction);
                 break;
+            case 'halloffame':
+                await handleHallOfFame(interaction);
+                break;
             case 'botinfo':
                 await handleBotInfo(interaction);
                 break;
@@ -556,6 +559,31 @@ async function handleCheck(interaction) {
     }
     const checkResult = await enhancedCheck(users, interaction.client, interaction.channelId, guildUsers);
     await interaction.editReply(checkResult);
+}
+
+async function handleHallOfFame(interaction) {
+    const guildId = interaction.guildId;
+    // Default to localhost:3000 if FRONTEND_URL is not set
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const hofUrl = `${baseUrl.replace(/\/+$/, '')}/hall-of-fame?guildId=${guildId}`;
+
+    const embed = {
+        color: 0x00d9ff,
+        title: '🏆 LeetCode Hall of Fame',
+        description: `View the top performers, longest streaks, and recent achievements for **${interaction.guild.name}** on our webpage.`,
+        fields: [
+            {
+                name: '🔗 Webpage Link',
+                value: `[**Click here to view the Hall of Fame**](${hofUrl})`
+            }
+        ],
+        footer: {
+            text: 'Real-time leaderboard and activity tracking'
+        },
+        timestamp: new Date()
+    };
+
+    await interaction.reply({ embeds: [embed] });
 }
 
 async function handleAddUser(interaction) {
@@ -1730,7 +1758,7 @@ async function handleBroadcastSubmit(interaction) {
         title: embedTitle,
         description: messageContent,
         footer: {
-            text: 'System Broadcast'
+            text: 'System Broadcast • Use /togglebroadcast to unsubscribe'
         },
         timestamp: new Date()
     };

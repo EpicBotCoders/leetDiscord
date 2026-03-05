@@ -1,6 +1,6 @@
 {
   "name": "leetdiscord",
-  "version": "2.5.18",
+  "version": "2.5.21",
   "main": "index.js",
   "scripts": {
     "build": "npm install && cd frontend && npm install --legacy-peer-deps && npm run build",
@@ -24,10 +24,13 @@
     "dotenv": "^16.5.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
+    "lucide-react": "^0.577.0",
     "mongodb": "^6.16.0",
     "mongoose": "^8.14.1",
+    "next": "^16.1.6",
     "node-cron": "^3.0.3",
     "node-telegram-bot-api": "^0.67.0",
+    "react": "^19.2.4",
     "uuid": "^9.0.1",
     "winston": "^3.17.0"
   },

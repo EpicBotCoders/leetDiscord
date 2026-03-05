@@ -265,6 +265,14 @@
     "hidden": false
   },
   {
+    "name": "halloffame",
+    "description": "Get a link to this server's LeetCode Hall of Fame webpage",
+    "options": [],
+    "category": "Monitoring",
+    "adminOnly": false,
+    "hidden": false
+  },
+  {
     "name": "profile",
     "description": "View detailed LeetCode profile and badges",
     "options": [
