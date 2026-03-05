@@ -1758,7 +1758,7 @@ async function handleBroadcastSubmit(interaction) {
         title: embedTitle,
         description: messageContent,
         footer: {
-            text: 'System Broadcast'
+            text: 'System Broadcast • Use /togglebroadcast to unsubscribe'
         },
         timestamp: new Date()
     };
