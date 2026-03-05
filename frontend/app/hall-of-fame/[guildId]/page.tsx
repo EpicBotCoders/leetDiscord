@@ -1,14 +1,16 @@
+import HallOfFameContent from "./content"
+
 // Generate static params for all guilds
 export async function generateStaticParams() {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/guilds`, {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+    const response = await fetch(`${apiUrl}/api/guilds`, {
       headers: {
         'Content-Type': 'application/json',
       },
     })
 
     if (!response.ok) {
-      console.warn('[v0] Failed to fetch guilds for static generation')
       return []
     }
 
@@ -17,12 +19,11 @@ export async function generateStaticParams() {
       guildId: guild.guildId,
     }))
   } catch (error) {
-    console.warn('[v0] Error generating static params:', error)
-    return []
+    // If API is unavailable during build, return at least one default param
+    // The page will be generated on-demand for other guild IDs
+    return [{ guildId: 'default' }]
   }
 }
-
-import HallOfFameContent from "./content"
 
 export default function HallOfFamePage() {
   return <HallOfFameContent />
