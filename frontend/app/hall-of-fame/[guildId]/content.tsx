@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import { DifficultyFilter } from "@/components/hall-of-fame/difficulty-filter"
 import { StatsSummary } from "@/components/hall-of-fame/stats-summary"
 import { TopPerformersCard } from "@/components/hall-of-fame/top-performers-card"
@@ -25,18 +25,23 @@ interface HallOfFameData {
 
 export default function HallOfFameContent() {
   const params = useParams()
-  const guildId = params.guildId as string
-  
+  const searchParams = useSearchParams()
+  const guildId = (params.guildId as string) || (searchParams.get("guildId") as string)
+
   const [difficulty, setDifficulty] = useState("All")
   const [data, setData] = useState<HallOfFameData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const fetchHallOfFameData = async () => {
+    if (!guildId || guildId === 'default') {
+      setLoading(false)
+      return
+    }
     try {
       setLoading(true)
       setError(null)
-      
+
       const query = new URLSearchParams()
       if (difficulty !== "All") {
         query.append("difficulty", difficulty)
@@ -45,7 +50,7 @@ export default function HallOfFameContent() {
       }
 
       const res = await fetch(`/api/hall-of-fame/${guildId}?${query.toString()}`)
-      
+
       if (!res.ok) {
         throw new Error(`Failed to fetch hall of fame data: ${res.statusText}`)
       }
@@ -101,6 +106,15 @@ export default function HallOfFameContent() {
           <div className="mb-8 rounded-lg border border-red-200 bg-red-50 p-4">
             <p className="text-sm text-red-800">
               <strong>Error:</strong> {error}
+            </p>
+          </div>
+        )}
+
+        {(!guildId || guildId === 'default') && !loading && (
+          <div className="mb-8 rounded-lg border border-blue-200 bg-blue-50 p-6 text-center">
+            <h2 className="text-xl font-semibold text-blue-900 mb-2">Select a Server</h2>
+            <p className="text-blue-800">
+              Please access the Hall of Fame using a direct link from your Discord server using the <strong>/halloffame</strong> command.
             </p>
           </div>
         )}

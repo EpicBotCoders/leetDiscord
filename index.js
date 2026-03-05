@@ -89,7 +89,9 @@ async function main() {
         });
 
         app.use(cors());
-        app.use(express.static(path.join(__dirname, 'frontend/out')));
+        app.use(express.static(path.join(__dirname, 'frontend/out'), {
+            extensions: ['html']
+        }));
 
         // Health check endpoint (moved up for immediate availability)
         app.get('/api/health', (req, res) => res.send('Alive'));
@@ -165,7 +167,7 @@ async function main() {
             try {
                 const { guildId } = req.params;
                 const { difficulty = 'All' } = req.query;
-                
+
                 const guild = await Guild.findOne({ guildId });
                 if (!guild) {
                     return res.status(404).json({ error: 'Guild not found' });
@@ -173,7 +175,7 @@ async function main() {
 
                 const { buildHallOfFameData } = require('./modules/hallOfFameUtils');
                 const hallOfFameData = await buildHallOfFameData(guildId, difficulty);
-                
+
                 res.json(hallOfFameData);
             } catch (error) {
                 logger.error('Hall of Fame API Error:', error);
@@ -181,8 +183,19 @@ async function main() {
             }
         });
 
-        // Catch-all to serve index.html
-        app.get(/(.*)/, frontendLimiter, (req, res) => {
+        // Catch-all: try to serve a matching .html file from the static export,
+        // then fall back to index.html for client-side routing
+        app.get(/.*/, frontendLimiter, (req, res) => {
+            if (req.url.startsWith('/api/')) {
+                return res.status(404).json({ error: 'API route not found' });
+            }
+            // Try to serve a specific page's HTML (e.g. /hall-of-fame -> hall-of-fame.html)
+            const urlPath = req.path.replace(/^\//, '').replace(/\/$/, '') || 'index';
+            const specificFile = path.join(__dirname, 'frontend/out', `${urlPath}.html`);
+            const fs = require('fs');
+            if (urlPath !== 'index' && fs.existsSync(specificFile)) {
+                return res.sendFile(specificFile);
+            }
             res.sendFile(path.join(__dirname, 'frontend/out/index.html'));
         });
 

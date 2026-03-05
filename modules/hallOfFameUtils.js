@@ -10,7 +10,7 @@ function parseDifficultyFilter(difficultyParam) {
     if (!difficultyParam || difficultyParam === 'All') {
         return ['Easy', 'Medium', 'Hard'];
     }
-    
+
     const difficulties = difficultyParam.split(',').map(d => d.trim());
     return difficulties.filter(d => ['Easy', 'Medium', 'Hard'].includes(d));
 }
@@ -23,11 +23,11 @@ function parseDifficultyFilter(difficultyParam) {
  * @param {string[]} difficulties - Array of difficulty levels to include
  * @returns {Promise<Object>} - Streak data: { current, best, lastSubmissionDate }
  */
-async function calculateStreaks(guildId, userId, difficulties = ['Easy', 'Medium', 'Hard']) {
+async function calculateStreaks(guildId, leetcodeUsername, difficulties = ['Easy', 'Medium', 'Hard']) {
     try {
         const submissions = await DailySubmission.find({
             guildId,
-            userId,
+            leetcodeUsername,
             difficulty: { $in: difficulties }
         }).sort({ date: 1 });
 
@@ -43,7 +43,7 @@ async function calculateStreaks(guildId, userId, difficulties = ['Easy', 'Medium
         });
 
         const sortedDates = Array.from(uniqueDates).sort();
-        
+
         let currentStreak = 0;
         let bestStreak = 0;
         let tempStreak = 1;
@@ -67,12 +67,12 @@ async function calculateStreaks(guildId, userId, difficulties = ['Easy', 'Medium
         // Calculate current streak from the most recent submission
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        
+
         currentStreak = 0;
         for (let i = sortedDates.length - 1; i >= 0; i--) {
             const checkDate = new Date(sortedDates[i]);
             const daysDiff = Math.floor((today - checkDate) / (1000 * 60 * 60 * 24));
-            
+
             if (daysDiff === currentStreak) {
                 currentStreak++;
             } else {
@@ -106,24 +106,26 @@ async function getTopPerformers(guildId, difficulties = ['Easy', 'Medium', 'Hard
             difficulty: { $in: difficulties }
         });
 
-        // Group submissions by user
+        // guild.users: Map<leetcodeUsername, discordId>
+        // Group submissions by leetcodeUsername (reliable canonical field)
         const userStats = new Map();
         submissions.forEach(sub => {
-            if (!userStats.has(sub.userId)) {
-                const username = guild.users.get(sub.userId) || 'Unknown';
-                userStats.set(sub.userId, {
-                    userId: sub.userId,
-                    username,
+            const key = sub.leetcodeUsername;
+            if (!userStats.has(key)) {
+                const discordId = guild.users.get(key) || null;
+                userStats.set(key, {
+                    userId: discordId,        // Discord snowflake (for mentions)
+                    username: key,            // LeetCode username (display name)
                     totalProblems: 0,
                     problemsByDifficulty: { Easy: 0, Medium: 0, Hard: 0 },
                     lastSubmissionDate: null
                 });
             }
 
-            const stats = userStats.get(sub.userId);
+            const stats = userStats.get(key);
             stats.totalProblems++;
             stats.problemsByDifficulty[sub.difficulty]++;
-            
+
             if (!stats.lastSubmissionDate || sub.submissionTime > stats.lastSubmissionDate) {
                 stats.lastSubmissionDate = sub.submissionTime;
             }
@@ -159,11 +161,12 @@ async function getLongestStreaks(guildId, difficulties = ['Easy', 'Medium', 'Har
 
         const streakData = [];
 
-        for (const [userId, username] of guild.users) {
-            const streaks = await calculateStreaks(guildId, userId, difficulties);
+        // guild.users: Map<leetcodeUsername, discordId>
+        for (const [leetcodeUsername, discordId] of guild.users) {
+            const streaks = await calculateStreaks(guildId, leetcodeUsername, difficulties);
             streakData.push({
-                userId,
-                username,
+                userId: discordId,         // Discord snowflake (for mentions)
+                username: leetcodeUsername, // LeetCode username (display name)
                 currentStreak: streaks.current,
                 bestStreak: streaks.best,
                 lastSubmissionDate: streaks.lastSubmissionDate
@@ -200,15 +203,16 @@ async function getRecentProblems(guildId, difficulties = ['Easy', 'Medium', 'Har
             difficulty: { $in: difficulties },
             submissionTime: { $gte: timeThreshold }
         })
-        .sort({ submissionTime: -1 })
-        .limit(limit);
+            .sort({ submissionTime: -1 })
+            .limit(limit);
 
         return recentSubmissions.map(sub => ({
             problemId: sub.questionSlug,
             problemTitle: sub.questionTitle,
             difficulty: sub.difficulty,
-            solver: guild.users.get(sub.userId) || 'Unknown',
-            userId: sub.userId,
+            solver: sub.leetcodeUsername,          // LeetCode username is reliable
+            discordId: guild.users.get(sub.leetcodeUsername) || null, // Discord ID for mention
+            userId: sub.leetcodeUsername,
             submissionTime: sub.submissionTime,
             isRecent: Date.now() - sub.submissionTime < 60 * 60 * 1000 // Less than 1 hour
         }));
@@ -227,7 +231,7 @@ async function getRecentProblems(guildId, difficulties = ['Easy', 'Medium', 'Har
 async function buildHallOfFameData(guildId, difficultyParam = 'All') {
     try {
         const difficulties = parseDifficultyFilter(difficultyParam);
-        
+
         const [topPerformers, longestStreaks, recentProblems] = await Promise.all([
             getTopPerformers(guildId, difficulties, 15),
             getLongestStreaks(guildId, difficulties, 10),
@@ -250,8 +254,8 @@ async function buildHallOfFameData(guildId, difficultyParam = 'All') {
             stats: {
                 totalProblems: submissions.length,
                 totalSolvers: uniqueUsers.size,
-                averageProblemsPerUser: uniqueUsers.size > 0 
-                    ? Math.round((submissions.length / uniqueUsers.size) * 10) / 10 
+                averageProblemsPerUser: uniqueUsers.size > 0
+                    ? Math.round((submissions.length / uniqueUsers.size) * 10) / 10
                     : 0
             },
             topPerformers,

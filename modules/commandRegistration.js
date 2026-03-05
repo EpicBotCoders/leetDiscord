@@ -186,6 +186,12 @@ const commandDefinitions = [
     {
         category: 'Monitoring',
         data: new SlashCommandBuilder()
+            .setName('halloffame')
+            .setDescription('Get a link to this server\'s LeetCode Hall of Fame webpage')
+    },
+    {
+        category: 'Monitoring',
+        data: new SlashCommandBuilder()
             .setName('profile')
             .setDescription('View detailed LeetCode profile and badges')
             .addStringOption(option =>
