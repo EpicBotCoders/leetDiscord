@@ -149,6 +149,17 @@ async function main() {
             }
         });
 
+        // Get all guilds (for static generation)
+        app.get('/api/guilds', async (req, res) => {
+            try {
+                const guilds = await Guild.find({}, { guildId: 1 });
+                res.json(guilds);
+            } catch (error) {
+                logger.error('Guilds API Error:', error);
+                res.status(500).json({ error: 'Internal Server Error' });
+            }
+        });
+
         // Hall of Fame endpoint
         app.get('/api/hall-of-fame/:guildId', async (req, res) => {
             try {

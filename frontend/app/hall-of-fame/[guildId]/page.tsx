@@ -1,5 +1,3 @@
-"use client"
-
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { DifficultyFilter } from "@/components/hall-of-fame/difficulty-filter"
@@ -7,6 +5,30 @@ import { StatsSummary } from "@/components/hall-of-fame/stats-summary"
 import { TopPerformersCard } from "@/components/hall-of-fame/top-performers-card"
 import { StreaksCard } from "@/components/hall-of-fame/streaks-card"
 import { RecentProblemsCard } from "@/components/hall-of-fame/recent-problems-card"
+
+// Generate static params for all guilds
+export async function generateStaticParams() {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/guilds`, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      console.warn('[v0] Failed to fetch guilds for static generation')
+      return []
+    }
+
+    const guilds = await response.json()
+    return guilds.map((guild: { guildId: string }) => ({
+      guildId: guild.guildId,
+    }))
+  } catch (error) {
+    console.warn('[v0] Error generating static params:', error)
+    return []
+  }
+}
 
 interface HallOfFameData {
   guildId: string
@@ -23,7 +45,8 @@ interface HallOfFameData {
   error?: string
 }
 
-export default function HallOfFamePage() {
+function HallOfFameContent() {
+  "use client"
   const params = useParams()
   const guildId = params.guildId as string
   
@@ -149,4 +172,8 @@ export default function HallOfFamePage() {
       </div>
     </main>
   )
+}
+
+export default function HallOfFamePage() {
+  return <HallOfFameContent />
 }
