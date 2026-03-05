@@ -14,7 +14,14 @@ async function startTelegramBot() {
     }
 
     try {
-        bot = new TelegramBot(token, { polling: true });
+        bot = new TelegramBot(token, {
+            polling: {
+                autoStart: true,
+                params: {
+                    timeout: 20 // Server-side long polling timeout (seconds)
+                }
+            }
+        });
 
         bot.on('message', async (msg) => {
             const chatId = msg.chat.id;
@@ -93,11 +100,25 @@ async function startTelegramBot() {
         });
 
         bot.on('polling_error', (error) => {
-            if (error.code === 'ETELEGRAM' && error.response && error.response.statusCode === 409) {
+            const message = error.message || '';
+            const errorCode = error.code || 'UNKNOWN';
+
+            if (errorCode === 'ETELEGRAM' && error.response && error.response.statusCode === 409) {
                 logger.warn('Telegram polling conflict (409): Another instance is running. Stopping polling for this instance to prevent conflicts.');
                 bot.stopPolling().catch(err => logger.error('Error stopping polling:', err));
+            } else if (
+                errorCode === 'ECONNRESET' ||
+                errorCode === 'ETIMEDOUT' ||
+                errorCode === 'EAI_AGAIN' ||
+                message.includes('ECONNRESET') ||
+                message.includes('ETIMEDOUT') ||
+                message.includes('EFATAL')
+            ) {
+                // These are common transient network errors/resets on providers like Render/Heroku
+                logger.debug(`Telegram polling transient error (${errorCode}). The library will auto-retry. Details: ${message}`);
             } else {
-                logger.error('Telegram polling error:', error);
+                // For actual errors, log as error so they appear in logs and webhooks
+                logger.error(`Telegram polling error [${errorCode}]:`, error);
             }
         });
 
