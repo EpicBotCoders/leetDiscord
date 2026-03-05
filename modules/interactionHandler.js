@@ -1111,20 +1111,22 @@ async function handleCalendar(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
-        const rangeOption = interaction.options.getString('range') || '7';
+        const rangeOption = interaction.options.getString('range') || 'current_month';
 
         // Resolve range to a number of days and a display label
         let range;
         let rangeLabel;
+        let daysLabel;
         if (rangeOption === 'current_month') {
             const now = new Date();
-            // Days elapsed so far in the current UTC month (including today)
-            range = now.getUTCDate();
+            range = 'current_month';
             const monthName = now.toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
             rangeLabel = `${monthName} ${now.getUTCFullYear()}`;
+            daysLabel = 'This Month';
         } else {
             range = [7, 30, 90].includes(parseInt(rangeOption, 10)) ? parseInt(rangeOption, 10) : 7;
             rangeLabel = `Last ${range} days`;
+            daysLabel = `${range}d`;
         }
 
         const usernameOption = interaction.options.getString('username');
@@ -1166,15 +1168,27 @@ async function handleCalendar(interaction) {
 
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0);
-        const start = new Date(today);
-        start.setDate(today.getDate() - (range - 1));
+        let start, end;
+        let totalDays;
+
+        if (range === 'current_month') {
+            start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+            end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
+            end.setUTCHours(23, 59, 59, 999);
+            totalDays = end.getUTCDate();
+        } else {
+            start = new Date(today);
+            start.setDate(today.getDate() - (range - 1));
+            end = new Date(today.getTime() + 86399000); // End of today
+            totalDays = range;
+        }
 
         const mention = targetDiscordId ? `<@${targetDiscordId}>` : targetUsername;
 
         const submissionCalendar = calendarData?.submissionCalendar || calendarData?.calendar || {};
         let activeDaysInRange = 0;
         const startTimeTs = Math.floor(start.getTime() / 1000);
-        const endTimeTs = Math.floor(today.getTime() / 1000) + 86399; // End of today
+        const endTimeTs = Math.floor(end.getTime() / 1000);
 
         for (const [key, count] of Object.entries(submissionCalendar)) {
             const ts = parseInt(key, 10);
@@ -1190,8 +1204,8 @@ async function handleCalendar(interaction) {
                 inline: true
             },
             {
-                name: `📅 Active Days (${range}d)`,
-                value: `**${activeDaysInRange}** / ${range}`,
+                name: `📅 Active Days (${daysLabel})`,
+                value: `**${activeDaysInRange}** / ${totalDays}`,
                 inline: true
             },
             {
@@ -1204,7 +1218,7 @@ async function handleCalendar(interaction) {
         const embed = {
             color: 0x5865F2,
             title: `🗓️ Activity Calendar for ${targetUsername}`,
-            description: `Showing LeetCode activity for **${rangeLabel}** (${start.toISOString().slice(0, 10)} → ${today.toISOString().slice(0, 10)}) for ${mention}`,
+            description: `Showing LeetCode activity for **${rangeLabel}** (${start.toISOString().slice(0, 10)} → ${end.toISOString().slice(0, 10)}) for ${mention}`,
             fields,
             image: {
                 url: 'attachment://calendar-chart.png'

@@ -215,14 +215,24 @@ async function generateCalendarChart(username, calendarData, rangeDays) {
             activityMap.set(iso, count);
         }
 
-        // ── 2. Generate the day list (oldest → today) ────────────────────────
+        // ── 2. Generate the day list (oldest → today or end of month) ────────────────────────
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0);
 
         const days = [];
-        for (let i = rangeDays - 1; i >= 0; i--) {
-            const d = new Date(today);
-            d.setDate(today.getDate() - i);
+        let numDays;
+        let endDate = today;
+
+        if (rangeDays === 'current_month') {
+            endDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0)); // last day of month
+            numDays = endDate.getUTCDate();
+        } else {
+            numDays = rangeDays;
+        }
+
+        for (let i = numDays - 1; i >= 0; i--) {
+            const d = new Date(endDate);
+            d.setDate(endDate.getDate() - i);
             const iso = d.toISOString().slice(0, 10);
             days.push({ date: d, iso, count: activityMap.get(iso) || 0 });
         }
@@ -316,7 +326,7 @@ async function generateCalendarChart(username, calendarData, rangeDays) {
                     legend: { display: false },
                     title: {
                         display: true,
-                        text: `${username}  ·  Last ${rangeDays} days`,
+                        text: rangeDays === 'current_month' ? `${username}  ·  Current Month` : `${username}  ·  Last ${rangeDays} days`,
                         color: '#e6edf3',
                         font: { family: 'Noto Sans', size: 15, weight: 'bold' },
                         padding: { bottom: 6 }

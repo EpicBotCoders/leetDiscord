@@ -140,7 +140,7 @@ const commandDefinitions = [
             .setDescription('Show recent LeetCode activity as a visual chart')
             .addStringOption(option =>
                 option.setName('range')
-                    .setDescription('Time range to display')
+                    .setDescription('Time range to display (defaults to Current month)')
                     .setRequired(false)
                     .addChoices(
                         { name: 'Last 7 days', value: '7' },

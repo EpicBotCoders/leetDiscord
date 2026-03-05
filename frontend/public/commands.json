@@ -190,7 +190,7 @@
           }
         ],
         "name": "range",
-        "description": "Time range to display",
+        "description": "Time range to display (defaults to Current month)",
         "required": false
       },
       {
