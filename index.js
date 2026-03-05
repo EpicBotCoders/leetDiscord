@@ -1,4 +1,5 @@
 // Refactor the code into modules
+require('dotenv').config();
 
 // Import necessary modules
 const { Client, GatewayIntentBits } = require('discord.js');
@@ -7,6 +8,7 @@ const { registerCommands } = require('./modules/commandRegistration');
 const { loadConfig } = require('./modules/configManager');
 const { connectDB } = require('./modules/models/db');
 const logger = require('./modules/logger');
+const webhookReporter = require('./modules/webhookReporter');
 const { initializeScheduledTasks, stopAllCronJobs } = require('./modules/scheduledTasks');
 const { forceOfflineStatsPanel } = require('./modules/statsPanel');
 const { startTelegramBot, stopTelegramBot } = require('./modules/telegramBot');
@@ -352,13 +354,28 @@ function setupGracefulShutdown(client, server) {
     process.on('SIGTERM', () => shutdown('SIGTERM'));
 
     // Handle uncaught exceptions and rejections
-    process.on('uncaughtException', (error) => {
+    process.on('uncaughtException', async (error) => {
         logger.error('Uncaught Exception:', error);
+        // Also report directly to webhook in case logger transport fails
+        await webhookReporter.send({
+            phase: 'Process: uncaughtException',
+            message: error?.message || String(error),
+            error: error instanceof Error ? error : null,
+            context: { pid: process.pid, nodeVersion: process.version },
+        });
         shutdown('uncaughtException');
     });
 
-    process.on('unhandledRejection', (reason, promise) => {
+    process.on('unhandledRejection', async (reason, promise) => {
+        const msg = reason instanceof Error ? reason.message : String(reason);
         logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+        // Also report directly to webhook in case logger transport fails
+        await webhookReporter.send({
+            phase: 'Process: unhandledRejection',
+            message: msg,
+            error: reason instanceof Error ? reason : null,
+            context: { pid: process.pid, nodeVersion: process.version },
+        });
         shutdown('unhandledRejection');
     });
 }

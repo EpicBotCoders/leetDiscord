@@ -33,6 +33,7 @@ const DailySubmission = require('./models/DailySubmission');
 const cache = {
     dailySlug: { value: null, expiry: 0 },
     problemDetails: new Map(),
+    userSubmissions: new Map(),
     userCalendar: new Map(),
     userProfile: new Map(),
     userBadges: new Map()
