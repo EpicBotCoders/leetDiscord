@@ -45,7 +45,7 @@ function getCallerPhase() {
 class DiscordWebhookTransport extends Transport {
     constructor(opts) {
         super(opts);
-        this.level = 'error'; // only handle error-level logs
+        this.level = 'warn'; // handle warn and error level logs
     }
 
     log(info, callback) {
@@ -71,9 +71,15 @@ class DiscordWebhookTransport extends Transport {
         setImmediate(() => {
             // Lazily require to avoid circular-import at module load time
             const { send } = require('./webhookReporter');
-            send({ phase, message, error: errorObj, context: contextObj }).catch((err) => {
+            send({
+                phase,
+                message,
+                error: errorObj,
+                context: contextObj,
+                level: info.level
+            }).catch((err) => {
                 // Surface webhook send failures without crashing the process
-                console.error('[webhookReporter] Failed to send error to Discord webhook:', err?.message);
+                console.error('[webhookReporter] Failed to send log to Discord webhook:', err?.message);
             });
         });
 

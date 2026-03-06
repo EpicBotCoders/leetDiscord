@@ -11,7 +11,8 @@
  *
  * Usage:
  *   const { send } = require('./webhookReporter');
- *   send({ phase, message, error, context });
+ *   send({ phase, message, error, context, level });
+ *   // level defaults to 'error', but can be 'warn' or 'info'
  */
 
 const https = require('https');
@@ -33,11 +34,28 @@ function truncate(str, maxLen = 1024) {
 }
 
 /**
- * Build a Discord embed object for the error.
- * @param {{ phase: string, message: string, error?: Error, context?: object }} opts
+ * Get embed title and color based on the log level.
+ * @param {string} level
+ * @returns {{title: string, color: number}}
+ */
+function getLevelConfig(level) {
+    switch (level) {
+        case 'info':
+            return { title: 'ℹ️ LeetDiscord Bot Info', color: 0x3498db }; // blue
+        case 'warn':
+            return { title: '⚠️ LeetDiscord Bot Warning', color: 0xf1c40f }; // yellow
+        case 'error':
+        default:
+            return { title: '🚨 LeetDiscord Bot Error', color: 0xff0000 }; // red
+    }
+}
+
+/**
+ * Build a Discord embed object for the event.
+ * @param {{ phase: string, message: string, error?: Error, context?: object, level?: string }} opts
  * @returns {object} Discord embed
  */
-function buildEmbed({ phase, message, error, context }) {
+function buildEmbed({ phase, message, error, context, level }) {
     const fields = [];
 
     fields.push({
@@ -72,9 +90,11 @@ function buildEmbed({ phase, message, error, context }) {
         });
     }
 
+    const config = getLevelConfig(level);
+
     return {
-        title: '🚨 LeetDiscord Bot Error',
-        color: 0xff0000, // red
+        title: config.title,
+        color: config.color,
         fields,
         footer: {
             text: `Node.js ${process.version} • PID ${process.pid}`,
@@ -148,14 +168,14 @@ function postWebhook(payload) {
 }
 
 /**
- * Send an error report to the configured Discord webhook.
+ * Send an event report to the configured Discord webhook.
  *
  * Rate-limited: identical (phase + message) pairs are suppressed within 10 seconds.
  *
- * @param {{ phase: string, message: string, error?: Error, context?: object }} opts
+ * @param {{ phase: string, message: string, error?: Error, context?: object, level?: string }} opts
  * @returns {Promise<void>}
  */
-async function send({ phase = 'Unknown', message = '', error = null, context = null } = {}) {
+async function send({ phase = 'Unknown', message = '', error = null, context = null, level = 'error' } = {}) {
     if (!process.env.ERROR_WEBHOOK_URL) return;
 
     // Rate-limit: skip if same error reported recently
@@ -172,9 +192,9 @@ async function send({ phase = 'Unknown', message = '', error = null, context = n
         }
     }
 
-    const embed = buildEmbed({ phase, message, error, context });
+    const embed = buildEmbed({ phase, message, error, context, level });
     const payload = {
-        username: 'LeetBot Error Logger',
+        username: 'LeetBot Event Logger',
         avatar_url: 'https://cdn.discordapp.com/embed/avatars/4.png',
         embeds: [embed],
     };

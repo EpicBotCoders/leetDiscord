@@ -345,7 +345,8 @@ async function main() {
                 require('./modules/webhookReporter').send({
                     phase: 'Guild Joined',
                     message: `Bot was added to a new server: **${guild.name}**`,
-                    context: { guildId: guild.id, memberCount: guild.memberCount }
+                    context: { guildId: guild.id, memberCount: guild.memberCount },
+                    level: 'info'
                 }).catch(() => { });
 
                 try {
@@ -374,7 +375,8 @@ async function main() {
                 require('./modules/webhookReporter').send({
                     phase: 'Guild Left',
                     message: `Bot was removed from server: **${guild.name}**`,
-                    context: { guildId: guild.id }
+                    context: { guildId: guild.id },
+                    level: 'info'
                 }).catch(() => { });
 
                 // Feedback DM Logic
@@ -546,6 +548,7 @@ function setupGracefulShutdown(client, server) {
             message: error?.message || String(error),
             error: error instanceof Error ? error : null,
             context: { pid: process.pid, nodeVersion: process.version },
+            level: 'error',
         });
         shutdown('uncaughtException');
     });
@@ -559,6 +562,7 @@ function setupGracefulShutdown(client, server) {
             message: msg,
             error: reason instanceof Error ? reason : null,
             context: { pid: process.pid, nodeVersion: process.version },
+            level: 'error',
         });
         shutdown('unhandledRejection');
     });
