@@ -1,9 +1,11 @@
+const { MessageFlags } = require('discord.js');
 const UserProfile = require('../models/UserProfile');
 const logger = require('../core/logger');
 const { getUserProfile, getUserBadges, getUserCalendar } = require('../services/apiUtils');
 const { generateBadgeChart, generateCalendarChart } = require('../utils/chartGenerator');
 const { formatUserProfileEmbed } = require('../utils/embeds');
 const { safeDeferReply, safeReply } = require('../utils/interactionUtils');
+const { getGuildUsers } = require('../core/configManager');
 
 async function handleProfile(interaction, getGuildUsers) {
     await safeDeferReply(interaction);
@@ -182,48 +184,136 @@ async function handleLeetStats(interaction, getGuildUsers) {
     }
 }
 
-async function handleCalendar(interaction, getGuildUsers) {
-    await safeDeferReply(interaction);
-    const range = interaction.options.getString('range') || 'current_month';
-    const usernameParam = interaction.options.getString('username');
+async function handleCalendar(interaction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
-        let targetUsername = usernameParam;
-        if (!targetUsername) {
-            const guildUsers = await getGuildUsers(interaction.guildId);
-            for (const [username, discordId] of Object.entries(guildUsers)) {
-                if (discordId === interaction.user.id) {
-                    targetUsername = username;
-                    break;
-                }
-            }
+        const rangeOption = interaction.options.getString('range') || 'current_month';
+
+        // Resolve range to a number of days and a display label
+        let range;
+        let rangeLabel;
+        let daysLabel;
+        if (rangeOption === 'current_month') {
+            const now = new Date();
+            range = 'current_month';
+            const monthName = now.toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
+            rangeLabel = `${monthName} ${now.getUTCFullYear()}`;
+            daysLabel = 'This Month';
+        } else {
+            range = [7, 30, 90].includes(parseInt(rangeOption, 10)) ? parseInt(rangeOption, 10) : 7;
+            rangeLabel = `Last ${range} days`;
+            daysLabel = `${range}d`;
         }
 
-        if (!targetUsername) {
-            await safeReply(interaction, 'Target user not found or you are not registered.');
+        const usernameOption = interaction.options.getString('username');
+        const guildUsers = await getGuildUsers(interaction.guildId);
+
+        if (Object.keys(guildUsers).length === 0) {
+            await interaction.editReply('No users are being tracked in this server. Use `/adduser` to start tracking!');
             return;
         }
 
+        let targetUsername = null;
+        let targetDiscordId = null;
+
+        if (usernameOption) {
+            if (!guildUsers[usernameOption]) {
+                await interaction.editReply(`❌ User **${usernameOption}** is not tracked in this server.`);
+                return;
+            }
+            targetUsername = usernameOption;
+            targetDiscordId = guildUsers[usernameOption];
+        } else {
+            const entry = Object.entries(guildUsers).find(([leetcode, discordId]) => discordId === interaction.user.id);
+            if (!entry) {
+                await interaction.editReply('❌ You are not registered in this server. Use `/adduser` to start tracking your LeetCode progress!');
+                return;
+            }
+            targetUsername = entry[0];
+            targetDiscordId = entry[1];
+        }
+
         const calendarData = await getUserCalendar(targetUsername);
-
-        let rangeDays = 30;
-        if (range === '7') rangeDays = 7;
-        else if (range === '90') rangeDays = 90;
-        else if (range === 'current_month') {
-            rangeDays = 'current_month';
-        } else {
-            rangeDays = parseInt(range);
+        if (!calendarData) {
+            await interaction.editReply('❌ Could not fetch your LeetCode calendar. Please try again later.');
+            return;
         }
 
-        const attachment = await generateCalendarChart(targetUsername, calendarData, rangeDays);
-        if (attachment) {
-            await safeReply(interaction, { files: [attachment] });
+        const chartAttachment = await generateCalendarChart(targetUsername, calendarData, range);
+
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+        let start, end;
+        let totalDays;
+
+        if (range === 'current_month') {
+            start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+            end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
+            end.setUTCHours(23, 59, 59, 999);
+            totalDays = end.getUTCDate();
         } else {
-            await safeReply(interaction, '❌ Failed to generate calendar chart.');
+            start = new Date(today);
+            start.setDate(today.getDate() - (range - 1));
+            end = new Date(today.getTime() + 86399000); // End of today
+            totalDays = range;
         }
+
+        const mention = targetDiscordId ? `<@${targetDiscordId}>` : targetUsername;
+
+        const submissionCalendar = calendarData?.submissionCalendar || calendarData?.calendar || {};
+        let activeDaysInRange = 0;
+        const startTimeTs = Math.floor(start.getTime() / 1000);
+        const endTimeTs = Math.floor(end.getTime() / 1000);
+
+        for (const [key, count] of Object.entries(submissionCalendar)) {
+            const ts = parseInt(key, 10);
+            if (ts >= startTimeTs && ts <= endTimeTs && count > 0) {
+                activeDaysInRange++;
+            }
+        }
+
+        const fields = [
+            {
+                name: '🔥 Current Streak',
+                value: `**${calendarData.streak || 0}** days`,
+                inline: true
+            },
+            {
+                name: `📅 Active Days (${daysLabel})`,
+                value: `**${activeDaysInRange}** / ${totalDays}`,
+                inline: true
+            },
+            {
+                name: '📆 Total Active',
+                value: `**${calendarData.totalActiveDays || 0}**`,
+                inline: true
+            }
+        ];
+
+        const embed = {
+            color: 0x5865F2,
+            title: `🗓️ Activity Calendar for ${targetUsername}`,
+            description: `Showing LeetCode activity for **${rangeLabel}** (${start.toISOString().slice(0, 10)} → ${end.toISOString().slice(0, 10)}) for ${mention}`,
+            fields,
+            image: {
+                url: 'attachment://calendar-chart.png'
+            },
+            footer: {
+                text: 'Chart colors: Green (Active Day), Gray (No Activity)'
+            },
+            timestamp: new Date()
+        };
+
+        const response = { embeds: [embed] };
+        if (chartAttachment) {
+            response.files = [chartAttachment];
+        }
+
+        await interaction.editReply(response);
     } catch (error) {
         logger.error('Error in handleCalendar:', error);
-        await safeReply(interaction, '❌ An error occurred while generating the calendar.');
+        await interaction.editReply('❌ An error occurred while fetching calendar data. Please try again later.');
     }
 }
 

@@ -1,5 +1,6 @@
 const logger = require('../core/logger');
 const { getGuildUsers, listCronJobs } = require('../core/configManager');
+const { listChecks } = require('../services/healthchecksApiUtils');
 
 // Cache for autocomplete data - updated only when members or cron jobs are added/removed
 const usernameCache = new Map(); // Map<guildId, string[]> - array of usernames
@@ -53,8 +54,6 @@ async function handleAutocomplete(interaction) {
                 await handleCronAutocomplete(interaction);
                 break;
             case 'hc':
-                // This might need healthchecksApiUtils
-                const { handleHealthchecksAutocomplete } = require('../services/healthchecksApiUtils');
                 await handleHealthchecksAutocomplete(interaction);
                 break;
             default:
@@ -150,7 +149,33 @@ async function handleCronAutocomplete(interaction) {
     }
 }
 
+
+async function handleHealthchecksAutocomplete(interaction) {
+    const focusedValue = interaction.options.getFocused().toLowerCase();
+
+    try {
+        const checks = await listChecks();
+
+        const filtered = checks
+            .filter(check =>
+                check.name.toLowerCase().includes(focusedValue) ||
+                check.slug.toLowerCase().includes(focusedValue)
+            )
+            .slice(0, 25)
+            .map(check => ({
+                name: `${check.statusEmoji} ${check.name}`,
+                value: check.name
+            }));
+
+        await interaction.respond(filtered);
+    } catch (error) {
+        logger.error('Error fetching healthchecks for autocomplete:', error);
+        await interaction.respond([]);
+    }
+}
+
 module.exports = {
+
     handleAutocomplete,
     invalidateUsernameCache,
     invalidateCronJobsCache,

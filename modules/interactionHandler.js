@@ -57,7 +57,7 @@ async function handleInteraction(interaction) {
                 case 'managecron': await handleManageCron(interaction); break;
                 case 'leetstats': await handleLeetStats(interaction, getGuildUsers); break;
                 case 'config': await handleConfig(interaction); break;
-                case 'calendar': await handleCalendar(interaction, getGuildUsers); break;
+                case 'calendar': await handleCalendar(interaction); break;
                 case 'halloffame': await handleHallOfFame(interaction); break;
                 case 'telegram': await handleTelegram(interaction, hasAdminAccess); break;
                 default:
