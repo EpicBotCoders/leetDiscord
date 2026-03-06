@@ -73,7 +73,9 @@ async function initializeGuildConfig(guildId, channelId) {
             cronJobs: [
                 { schedule: '0 10 * * *', task: 'runCheck' },
                 { schedule: '0 18 * * *', task: 'runCheck' }
-            ]
+            ],
+            isActive: true,
+            channelValid: true
         });
     }
     return guild;
@@ -160,6 +162,18 @@ async function removeUser(guildId, username) {
     return `Removed ${username} from tracking list for this server.`;
 }
 
+async function removeGuild(guildId) {
+    logger.debug(`[removeGuild] Starting. Guild: ${guildId}`);
+    try {
+        await Guild.deleteOne({ guildId });
+        logger.info(`[removeGuild] Successfully removed guild: ${guildId}`);
+        return true;
+    } catch (error) {
+        logger.error(`[removeGuild] Error removing guild ${guildId}:`, error);
+        return false;
+    }
+}
+
 async function getGuildUsers(guildId) {
     logger.debug(`[getGuildUsers] Getting users for guild: ${guildId}`);
 
@@ -188,6 +202,8 @@ async function updateGuildChannel(guildId, channelId) {
     }
 
     guild.channelId = channelId;
+    guild.isActive = true;
+    guild.channelValid = true;
     await guild.save();
     return 'Updated announcement channel for this server.';
 }
@@ -434,6 +450,7 @@ module.exports = {
     initializeGuildConfig,
     addUser,
     removeUser,
+    removeGuild,
     getGuildUsers,
     getGuildConfig,
     updateGuildChannel,

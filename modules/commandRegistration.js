@@ -213,6 +213,12 @@ const commandDefinitions = [
             .setDescription('Display all available commands and their usage')
     },
     {
+        category: 'Information',
+        data: new SlashCommandBuilder()
+            .setName('invite')
+            .setDescription('Get an invite link to add the bot to another server')
+    },
+    {
         category: 'Notifications',
         data: new SlashCommandBuilder()
             .setName('telegram')

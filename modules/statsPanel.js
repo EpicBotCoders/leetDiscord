@@ -59,7 +59,7 @@ async function updateStatsPanel(client) {
             return;
         }
 
-        const channel = await guild.channels.fetch(STATS_CHANNEL_ID);
+        const channel = await guild.channels.fetch(STATS_CHANNEL_ID).catch(() => null);
         if (!channel) {
             logger.error(`Stats channel ${STATS_CHANNEL_ID} not found`);
             return;
@@ -118,10 +118,11 @@ async function updateStatsPanel(client) {
 async function calculateMetrics(client) {
     try {
         // Total configured guilds
-        const totalGuilds = await Guild.countDocuments({});
+        const totalGuilds = await Guild.countDocuments({ isActive: true });
+        const inactiveGuilds = await Guild.countDocuments({ isActive: false });
 
-        // Total active users (sum of users tracked across all guilds)
-        const guilds = await Guild.find({});
+        // Total active users (sum of users tracked across all active guilds)
+        const guilds = await Guild.find({ isActive: true });
         let totalUsers = 0;
         let contestReminderEnabledCount = 0;
         for (const guild of guilds) {
@@ -148,6 +149,7 @@ async function calculateMetrics(client) {
 
         return {
             totalGuilds,
+            inactiveGuilds,
             totalUsers,
             uptime,
             version,
@@ -158,6 +160,7 @@ async function calculateMetrics(client) {
         logger.error('Error calculating metrics:', error);
         return {
             totalGuilds: 0,
+            inactiveGuilds: 0,
             totalUsers: 0,
             uptime: 'Unknown',
             version: packageJson.version,
@@ -171,17 +174,13 @@ async function calculateMetrics(client) {
  */
 function buildStatsEmbed(metrics) {
     return {
-        color: 0x00d9ff,
-        title: '📊 Bot Status & Usage Statistics',
+        color: 0x00FF00, // Green
+        title: '🤖 LeetDiscord Bot Live Stats',
+        description: 'Real-time statistics for the Discord bot.',
         fields: [
             {
-                name: '🌐 Status',
+                name: '🟢 Status',
                 value: metrics.status,
-                inline: true
-            },
-            {
-                name: '📦 Version',
-                value: `v${metrics.version}`,
                 inline: true
             },
             {
@@ -190,28 +189,37 @@ function buildStatsEmbed(metrics) {
                 inline: true
             },
             {
-                name: '🏛️ Configured Guilds',
-                value: metrics.totalGuilds.toString(),
+                name: '📦 Version',
+                value: `v${metrics.version}`,
                 inline: true
             },
             {
-                name: '👥 Active Users',
-                value: metrics.totalUsers.toString(),
+                name: '🏢 Active Servers',
+                value: `${metrics.totalGuilds}`,
                 inline: true
             },
             {
-                name: '⏰ Contest Reminders Enabled',
-                value: `${metrics.contestReminderEnabledCount} / ${metrics.totalGuilds}`,
+                name: '👥 Tracked Users',
+                value: `${metrics.totalUsers}`,
+                inline: true
+            },
+            {
+                name: '⏰ Contest Reminders',
+                value: `${metrics.contestReminderEnabledCount}`,
+                inline: true
+            },
+            {
+                name: '🧊 Inactive Servers',
+                value: `${metrics.inactiveGuilds || 0}`,
                 inline: true
             }
         ],
         footer: {
-            text: 'Updates automatically every hour'
+            text: `Last updated: ${new Date().toUTCString()} | Updates every 10 minutes`
         },
         timestamp: new Date()
     };
 }
-
 /**
  * Format uptime in a human-readable format
  */
@@ -257,7 +265,7 @@ async function forceOfflineStatsPanel(client) {
         // Fetch the target guild and channel
         const guild = await client.guilds.fetch(STATS_GUILD_ID);
         if (!guild) return;
-        const channel = await guild.channels.fetch(STATS_CHANNEL_ID);
+        const channel = await guild.channels.fetch(STATS_CHANNEL_ID).catch(() => null);
         if (!channel) return;
 
         // Get stored message ID

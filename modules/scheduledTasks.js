@@ -26,7 +26,7 @@ async function performContestReminder(client) {
         const embeds = upcomingContests.map((contest, i) =>
             formatLeetCodeContestEmbed(contest, i, upcomingContests.length)
         );
-        const guilds = await Guild.find({ contestReminderEnabled: true });
+        const guilds = await Guild.find({ contestReminderEnabled: true, isActive: true, channelValid: { $ne: false } });
         for (const guild of guilds) {
             try {
                 const channel = await client.channels.fetch(guild.channelId).catch(() => null);
@@ -112,7 +112,7 @@ async function initializeScheduledTasks(client) {
     discordClient = client;  // Store the client instance
     try {
         // Get all guilds from MongoDB
-        const guilds = await Guild.find({});
+        const guilds = await Guild.find({ isActive: true });
 
         for (const guild of guilds) {
             // Initialize cron jobs for each guild
@@ -163,13 +163,33 @@ async function performDailyCheck(client, guildId, channelId) {
         const guild = await Guild.findOne({ guildId });
         if (!guild) {
             logger.error(`Guild ${guildId} not found in database`);
-            return;
+            return 'Guild not found in database.';
         }
 
-        const channel = await client.channels.fetch(guild.channelId);
+        const channel = await client.channels.fetch(guild.channelId).catch(() => null);
         if (!channel) {
-            logger.error(`Channel ${guild.channelId} not found for guild ${guildId}`);
-            return;
+            logger.error(`Channel ${guild.channelId} not found or inaccessible for guild ${guildId} — marking channelValid=false`);
+            try {
+                await Guild.findOneAndUpdate({ guildId }, { $set: { channelValid: false } });
+            } catch (updateErr) {
+                logger.error(`Failed to mark channelValid=false for guild ${guildId}:`, updateErr);
+            }
+            // Attempt to DM guild owner
+            try {
+                const discordGuild = client.guilds.cache.get(guildId);
+                if (discordGuild) {
+                    const owner = await discordGuild.fetchOwner().catch(() => null);
+                    if (owner) {
+                        await owner.send(
+                            `⚠️ The announcement channel configured for your server **${discordGuild.name}** no longer exists or is inaccessible.\n` +
+                            `Please use \`/setchannel\` to set a new channel so I can resume posting updates!`
+                        ).catch(() => { });
+                    }
+                }
+            } catch (dmErr) {
+                logger.error(`Failed to DM owner about missing channel for guild ${guildId}:`, dmErr);
+            }
+            return 'Configured announcement channel is inaccessible. Please use `/setchannel`.';
         }
 
         // Check if bot has permission to send messages in this channel
@@ -188,19 +208,19 @@ async function performDailyCheck(client, guildId, channelId) {
             } catch (dmError) {
                 logger.error('Failed to notify guild owner about permissions:', dmError);
             }
-            return;
+            return 'Bot lacks `Send Messages` permission in the configured channel.';
         }
 
         const users = Object.fromEntries(guild.users);
         if (Object.keys(users).length === 0) {
-            return;
+            return 'No users are currently being tracked in this server.';
         }
 
         // Get today's daily challenge slug and problem details
         const dailySlug = await getDailySlug();
         if (!dailySlug) {
             logger.error('Failed to fetch daily challenge slug');
-            return;
+            return 'Failed to fetch the daily challenge from LeetCode API.';
         }
 
         // Fetch problem details to get difficulty
@@ -208,7 +228,7 @@ async function performDailyCheck(client, guildId, channelId) {
         const problem = problemDetails.data;
         if (!problem || !problem.difficulty) {
             logger.error('Failed to fetch problem details or missing difficulty');
-            return;
+            return 'Failed to fetch problem details from API.';
         }
 
         const incompleteUsers = [];
@@ -421,7 +441,7 @@ async function performSilentCheck(client) {
         today.setUTCHours(0, 0, 0, 0);
 
         // Get all guilds from MongoDB
-        const guilds = await Guild.find({});
+        const guilds = await Guild.find({ isActive: true, channelValid: { $ne: false } });
 
         for (const guild of guilds) {
             const users = Object.fromEntries(guild.users);
@@ -506,9 +526,14 @@ async function performSilentCheck(client) {
 // Helper function to format and post submission report
 async function postSubmissionReport(client, guild, problem, submissionsData) {
     try {
-        const channel = await client.channels.fetch(guild.channelId);
+        const channel = await client.channels.fetch(guild.channelId).catch(() => null);
         if (!channel) {
-            logger.warn(`Channel ${guild.channelId} not found for guild ${guild.guildId}`);
+            logger.warn(`Channel ${guild.channelId} not found or inaccessible for guild ${guild.guildId} — marking channelValid=false`);
+            try {
+                await Guild.findOneAndUpdate({ guildId: guild.guildId }, { $set: { channelValid: false } });
+            } catch (updateErr) {
+                logger.error(`Failed to mark channelValid=false for guild ${guild.guildId}:`, updateErr);
+            }
             return;
         }
 
@@ -563,5 +588,57 @@ module.exports = {
     performDailyCheck,
     scheduleSilentDailyCheck,
     performSilentCheck,
-    performContestReminder    // exposed for testing
+    performContestReminder,    // exposed for testing
+    validateGuilds             // exposed for startup validation
 };
+
+/**
+ * Startup validation: checks all guilds in DB against live Discord state.
+ * - If bot is no longer in a guild → marks isActive=false (data preserved)
+ * - If configured channel is gone → marks channelValid=false (data preserved)
+ */
+async function validateGuilds(client) {
+    logger.info('Running startup guild validation...');
+    try {
+        const guilds = await Guild.find({});
+        let markedInactive = 0;
+        let markedChannelInvalid = 0;
+
+        for (const guild of guilds) {
+            // Check if bot is still in the guild
+            const discordGuild = await client.guilds.fetch(guild.guildId).catch(() => null);
+            if (!discordGuild) {
+                if (guild.isActive !== false) {
+                    await Guild.findOneAndUpdate({ guildId: guild.guildId }, { $set: { isActive: false } });
+                    logger.warn(`validateGuilds: Bot not in guild ${guild.guildId} — marked isActive=false`);
+                    markedInactive++;
+                }
+                continue;
+            }
+
+            // Bot is in the guild — ensure isActive is true
+            if (guild.isActive === false) {
+                await Guild.findOneAndUpdate({ guildId: guild.guildId }, { $set: { isActive: true } });
+            }
+
+            // Check if configured channel is still accessible
+            if (guild.channelId) {
+                const channel = await client.channels.fetch(guild.channelId).catch(() => null);
+                if (!channel) {
+                    if (guild.channelValid !== false) {
+                        await Guild.findOneAndUpdate({ guildId: guild.guildId }, { $set: { channelValid: false } });
+                        logger.warn(`validateGuilds: Channel ${guild.channelId} inaccessible for guild ${guild.guildId} — marked channelValid=false`);
+                        markedChannelInvalid++;
+                    }
+                } else if (guild.channelValid === false) {
+                    // Channel is back — clear the flag
+                    await Guild.findOneAndUpdate({ guildId: guild.guildId }, { $set: { channelValid: true } });
+                }
+            }
+        }
+
+        logger.info(`validateGuilds complete: ${guilds.length} guild(s) checked, ${markedInactive} marked inactive, ${markedChannelInvalid} channels marked invalid`);
+    } catch (error) {
+        logger.error('Error during validateGuilds:', error);
+    }
+}

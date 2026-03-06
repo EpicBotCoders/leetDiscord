@@ -57,6 +57,14 @@ const guildSchema = new mongoose.Schema({
     contestReminderEnabled: {
         type: Boolean,
         default: false
+    },
+    isActive: {
+        type: Boolean,
+        default: true
+    },
+    channelValid: {
+        type: Boolean,
+        default: true
     }
 });
 

@@ -322,6 +322,13 @@ async function handleInteraction(interaction) {
             return;
         }
 
+        // Handle welcome-back restore buttons
+        if (interaction.isButton() && (interaction.customId === 'guild_restore_keep' || interaction.customId === 'guild_restore_reset')) {
+            logger.info(`Handling welcome-back restore button: ${interaction.customId}`);
+            await handleWelcomeBackRestore(interaction);
+            return;
+        }
+
         // Handle autocomplete interactions
         if (interaction.isAutocomplete()) {
             logger.info(`Handling autocomplete for: ${commandName}`);
@@ -392,6 +399,9 @@ async function handleInteraction(interaction) {
                 break;
             case 'help':
                 await handleHelp(interaction);
+                break;
+            case 'invite':
+                await handleInvite(interaction);
                 break;
             case 'telegram':
                 await handleTelegram(interaction);
@@ -2576,6 +2586,60 @@ async function handleHealthchecksAutocomplete(interaction) {
     } catch (error) {
         logger.error('Error in handleHealthchecksAutocomplete:', error);
         await interaction.respond([]);
+    }
+}
+
+async function handleInvite(interaction) {
+    const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${interaction.client.user.id}&permissions=19456&scope=bot%20applications.commands`;
+
+    const button = new ButtonBuilder()
+        .setLabel('Add Bot to Server')
+        .setURL(inviteUrl)
+        .setStyle(ButtonStyle.Link);
+
+    const row = new ActionRowBuilder().addComponents(button);
+
+    await interaction.reply({
+        content: 'Click the button below to invite me to your server!',
+        components: [row]
+    });
+}
+async function handleWelcomeBackRestore(interaction) {
+    if (!interaction.memberPermissions.has('ManageGuild') && !interaction.memberPermissions.has('Administrator')) {
+        await interaction.reply({ content: 'You need Manage Server or Administrator permissions to perform this action.', flags: MessageFlags.Ephemeral });
+        return;
+    }
+
+    try {
+        const Guild = require('./models/Guild');
+        const guildId = interaction.guildId;
+
+        if (interaction.customId === 'guild_restore_keep') {
+            await Guild.findOneAndUpdate(
+                { guildId },
+                { $set: { isActive: true, channelValid: true } }
+            );
+            await interaction.update({
+                content: '✅ **Configuration Restored**\nI have reactivated your previous configuration, including tracked users and cron jobs. I will resume posting updates to your configured announcement channel.',
+                embeds: [],
+                components: []
+            });
+            logger.info(`Guild ${guildId} chose to keep configuration`);
+        } else if (interaction.customId === 'guild_restore_reset') {
+            const { removeGuild } = require('./configManager');
+            await removeGuild(guildId);
+            await interaction.update({
+                content: '🗑️ **Data Reset Successfully**\nYour previous data and configuration for this server has been deleted. I am ready for a fresh start!\n\nUse `/setchannel` to configure me.',
+                embeds: [],
+                components: []
+            });
+            logger.info(`Guild ${guildId} chose to reset configuration`);
+        }
+    } catch (error) {
+        logger.error(`Error in handleWelcomeBackRestore for ${interaction.guildId}:`, error);
+        if (!interaction.replied) {
+            await interaction.reply({ content: 'An error occurred while processing your request.', flags: MessageFlags.Ephemeral });
+        }
     }
 }
 

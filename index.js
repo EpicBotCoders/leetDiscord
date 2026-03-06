@@ -2,14 +2,14 @@
 require('dotenv').config();
 
 // Import necessary modules
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require('discord.js');
 const { handleInteraction, initializeAutocompleteCache } = require('./modules/interactionHandler');
 const { registerCommands } = require('./modules/commandRegistration');
 const { loadConfig } = require('./modules/configManager');
 const { connectDB } = require('./modules/models/db');
 const logger = require('./modules/logger');
 const webhookReporter = require('./modules/webhookReporter');
-const { initializeScheduledTasks, stopAllCronJobs } = require('./modules/scheduledTasks');
+const { initializeScheduledTasks, stopAllCronJobs, validateGuilds } = require('./modules/scheduledTasks');
 const { forceOfflineStatsPanel } = require('./modules/statsPanel');
 const { startTelegramBot, stopTelegramBot } = require('./modules/telegramBot');
 const http = require('http');
@@ -58,6 +58,59 @@ async function sendWelcomeMessage(guild) {
     }
 }
 
+async function sendWelcomeBackMessage(guild, existingGuildConfig) {
+    try {
+        const channel = guild.channels.cache.find(
+            ch => ch.type === 0 &&
+                ch.permissionsFor(guild.members.me).has(['SendMessages', 'ViewChannel'])
+        );
+
+        if (!channel) {
+            logger.warn(`Could not find a suitable channel to send welcome-back message in guild ${guild.name}`);
+            return;
+        }
+
+        const userCount = existingGuildConfig.users ? existingGuildConfig.users.size : 0;
+        const cronCount = existingGuildConfig.cronJobs ? existingGuildConfig.cronJobs.length : 0;
+
+        const welcomeBackEmbed = {
+            color: 0xf5a623,
+            title: '👋 Welcome Back!',
+            description:
+                `I was previously configured in this server and still have your data.\n\n` +
+                `**Existing configuration includes:**\n` +
+                `• **${userCount}** tracked user(s)\n` +
+                `• **${cronCount}** scheduled cron job(s)\n\n` +
+                `Would you like to continue with your existing configuration, or start fresh?`,
+            fields: [
+                {
+                    name: '⚠️ Admin Only',
+                    value: 'Only server administrators can use the buttons below.'
+                }
+            ],
+            footer: { text: 'This prompt will be ignored after 10 minutes.' },
+            timestamp: new Date()
+        };
+
+        const keepButton = new ButtonBuilder()
+            .setCustomId('guild_restore_keep')
+            .setLabel('✅ Keep Existing Config')
+            .setStyle(ButtonStyle.Success);
+
+        const resetButton = new ButtonBuilder()
+            .setCustomId('guild_restore_reset')
+            .setLabel('🗑️ Start Fresh')
+            .setStyle(ButtonStyle.Danger);
+
+        const row = new ActionRowBuilder().addComponents(keepButton, resetButton);
+
+        await channel.send({ embeds: [welcomeBackEmbed], components: [row] });
+        logger.info(`Sent welcome-back message to guild ${guild.name} (${guild.id})`);
+    } catch (error) {
+        logger.error('Error sending welcome-back message:', error);
+    }
+}
+
 async function main() {
     let client = null;
     let server = null;
@@ -100,10 +153,10 @@ async function main() {
         // API Endpoints
         app.get('/api/stats', async (req, res) => {
             try {
-                const totalGuilds = await Guild.countDocuments();
+                const activeGuildsCount = await Guild.countDocuments({ isActive: true });
                 const totalSubmissions = await DailySubmission.countDocuments();
 
-                const guilds = await Guild.find({}, 'users');
+                const guilds = await Guild.find({ isActive: true }, 'users');
                 const uniqueUsers = new Set();
                 for (const guild of guilds) {
                     if (guild.users) {
@@ -114,7 +167,7 @@ async function main() {
                 }
 
                 res.json({
-                    guilds: totalGuilds,
+                    guilds: activeGuildsCount,
                     users: uniqueUsers.size,
                     submissions: totalSubmissions,
                     version: process.env.npm_package_version || '2.2.0'
@@ -136,6 +189,10 @@ async function main() {
                 const guild = await Guild.findOne({ guildId });
                 if (!guild) {
                     return res.status(404).json({ error: 'Guild not found' });
+                }
+
+                if (guild.isActive === false) {
+                    return res.json({ error: 'Guild is currently inactive', inactive: true });
                 }
 
                 const leaderboard = [];
@@ -160,7 +217,8 @@ async function main() {
         // Get all guilds (for static generation)
         app.get('/api/guilds', apiLimiter, async (req, res) => {
             try {
-                const guilds = await Guild.find({}, { guildId: 1 });
+                // Return only active guilds so frontend doesn't build pages for inactive ones
+                const guilds = await Guild.find({ isActive: true }, { guildId: 1 });
                 res.json(guilds);
             } catch (error) {
                 logger.error('Guilds API Error:', error);
@@ -177,6 +235,10 @@ async function main() {
                 const guild = await Guild.findOne({ guildId });
                 if (!guild) {
                     return res.status(404).json({ error: 'Guild not found' });
+                }
+
+                if (guild.isActive === false) {
+                    return res.json({ error: 'Guild is currently inactive', inactive: true });
                 }
 
                 const { buildHallOfFameData } = require('./modules/hallOfFameUtils');
@@ -258,10 +320,13 @@ async function main() {
                     logger.info('Step 1: Registering commands...');
                     await registerCommands(appId);
 
-                    logger.info('Step 2: Initializing scheduled tasks...');
+                    logger.info('Step 2: Validating existing guilds...');
+                    await validateGuilds(c);
+
+                    logger.info('Step 3: Initializing scheduled tasks...');
                     await initializeScheduledTasks(c);
 
-                    logger.info('Step 3: Initializing autocomplete cache...');
+                    logger.info('Step 4: Initializing autocomplete cache...');
                     await initializeAutocompleteCache();
 
                     logger.info('Discord initialization complete');
@@ -276,8 +341,76 @@ async function main() {
             });
 
             client.on('guildCreate', async (guild) => {
-                logger.info(`Joined new guild: ${guild.name} (${guild.id})`);
-                await sendWelcomeMessage(guild);
+                logger.info(`Joined guild: ${guild.name} (${guild.id})`);
+                require('./modules/webhookReporter').send({
+                    phase: 'Guild Joined',
+                    message: `Bot was added to a new server: **${guild.name}**`,
+                    context: { guildId: guild.id, memberCount: guild.memberCount }
+                }).catch(() => { });
+
+                try {
+                    const Guild = require('./modules/models/Guild');
+                    const existingConfig = await Guild.findOne({ guildId: guild.id });
+                    if (existingConfig) {
+                        // Bot was re-added — data still exists, ask admin what to do
+                        logger.info(`Existing config found for guild ${guild.id}, sending welcome-back message`);
+                        await sendWelcomeBackMessage(guild, existingConfig);
+                    } else {
+                        // Brand new guild
+                        await sendWelcomeMessage(guild);
+                    }
+                } catch (err) {
+                    logger.error(`Error in guildCreate handler for ${guild.id}:`, err);
+                    await sendWelcomeMessage(guild); // fallback to normal welcome
+                }
+            });
+
+            client.on('guildDelete', async (guild) => {
+                logger.info(`Removed from guild: ${guild.name} (${guild.id}) — marking inactive, data preserved`);
+
+                // Feedback feature requested logs
+                logger.info(`Bot removed event - Guild: ${guild.name}, ID: ${guild.id}, Owner: ${guild.ownerId || 'Unknown'}`);
+
+                require('./modules/webhookReporter').send({
+                    phase: 'Guild Left',
+                    message: `Bot was removed from server: **${guild.name}**`,
+                    context: { guildId: guild.id }
+                }).catch(() => { });
+
+                // Feedback DM Logic
+                try {
+                    const ownerId = guild.ownerId;
+                    if (!ownerId) {
+                        logger.warn(`Could not retrieve owner ID for guild ${guild.id} (${guild.name}). Skipping feedback DM.`);
+                    } else {
+                        const feedbackUrl = process.env.FEEDBACK_FORM_URL;
+                        if (feedbackUrl) {
+                            try {
+                                const owner = await client.users.fetch(ownerId);
+                                const dmMessage = `Hey! 👋\n\nI noticed LeetDiscord was removed from your server: **${guild.name}**.\n\nNo worries at all — but if you're willing, I’d really appreciate quick feedback so I can improve the bot.\n\nThis form takes less than 30 seconds:\n${feedbackUrl}\n\nThanks for giving the bot a try ❤️`;
+
+                                await owner.send(dmMessage);
+                                logger.info(`Successfully sent feedback DM to owner ${ownerId} of guild ${guild.id}`);
+                            } catch (dmErr) {
+                                logger.warn(`Failed to send feedback DM to owner ${ownerId} of guild ${guild.id} (DMs might be disabled): ${dmErr.message}`);
+                            }
+                        } else {
+                            logger.warn('FEEDBACK_FORM_URL is not configured in environment variables. Skipping feedback DM.');
+                        }
+                    }
+                } catch (feedbackErr) {
+                    logger.error(`Error processing feedback DM for guild ${guild.id}:`, feedbackErr);
+                }
+
+                try {
+                    const Guild = require('./modules/models/Guild');
+                    await Guild.findOneAndUpdate(
+                        { guildId: guild.id },
+                        { $set: { isActive: false } }
+                    );
+                } catch (err) {
+                    logger.error(`Error marking guild ${guild.id} as inactive:`, err);
+                }
             });
 
             client.on('error', error => {
