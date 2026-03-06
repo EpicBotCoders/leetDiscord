@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { commandDefinitions } = require('../modules/commandRegistration');
+const { commandDefinitions } = require('../modules/core/commandRegistration');
 
 
 // Extract metadata from SlashCommandBuilder's .toJSON(), plus category/adminOnly

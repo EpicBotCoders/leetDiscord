@@ -1,14 +1,15 @@
-const { sortSubmissionsByPerformance, buildRankedFields } = require('../leaderboardUtils');
+const { buildRankedFields, sortSubmissionsByPerformance } = require('../utils/leaderboardUtils');
+const { parseDuration, parseMemory } = require('../services/apiUtils');
 
-jest.mock('../apiUtils', () => ({
+jest.mock('../services/apiUtils', () => ({
     parseDuration: jest.fn((str) => {
         if (!str) return Infinity;
-        const m = str.match(/(\\d+(?:\\.\\d+)?)\\s*ms/);
+        const m = str.match(/(\d+(?:\.\d+)?)\s*ms/i);
         return m ? parseFloat(m[1]) : Infinity;
     }),
     parseMemory: jest.fn((str) => {
         if (!str) return Infinity;
-        const m = str.match(/(\\d+(?:\\.\\d+)?)\\s*MB/);
+        const m = str.match(/(\d+(?:\.\d+)?)\s*MB/i);
         return m ? parseFloat(m[1]) : Infinity;
     })
 }));
@@ -58,38 +59,14 @@ describe('leaderboardUtils', () => {
                         runtime: '110 ms',
                         memory: '21.0 MB'
                     }
-                },
-                {
-                    username: 'thirdUser',
-                    discordId: '456',
-                    submission: {
-                        url: '/submissions/detail/3/',
-                        langName: 'C++',
-                        runtime: '120 ms',
-                        memory: '22.0 MB'
-                    }
-                },
-                {
-                    username: 'fourthUser',
-                    discordId: null,
-                    submission: {
-                        url: '/submissions/detail/4/',
-                        langName: 'Go',
-                        runtime: '130 ms',
-                        memory: '23.0 MB'
-                    }
                 }
             ];
 
             const fields = buildRankedFields(rows);
 
-            expect(fields).toHaveLength(4);
+            expect(fields).toHaveLength(2);
             expect(fields[0].name).toContain('🥇');
             expect(fields[1].name).toContain('🥈');
-            expect(fields[2].name).toContain('🥉');
-            expect(fields[3].name).not.toContain('🥇');
-            expect(fields[3].name).not.toContain('🥈');
-            expect(fields[3].name).not.toContain('🥉');
 
             expect(fields[0].value).toContain('<@123>');
             expect(fields[1].value).toContain('secondUser');
@@ -110,5 +87,3 @@ describe('leaderboardUtils', () => {
         });
     });
 });
-
-

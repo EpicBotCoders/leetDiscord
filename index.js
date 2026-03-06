@@ -2,17 +2,17 @@
 require('dotenv').config();
 
 // Import necessary modules
-const { Client, GatewayIntentBits, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ButtonBuilder, ButtonStyle, ActionRowBuilder, Events } = require('discord.js');
 const { handleInteraction, initializeAutocompleteCache } = require('./modules/interactionHandler');
-const { registerCommands } = require('./modules/commandRegistration');
-const { loadConfig } = require('./modules/configManager');
-const { connectDB } = require('./modules/models/db');
-const logger = require('./modules/logger');
-const webhookReporter = require('./modules/webhookReporter');
-const { initializeScheduledTasks, stopAllCronJobs, validateGuilds } = require('./modules/scheduledTasks');
-const { forceOfflineStatsPanel } = require('./modules/statsPanel');
-const { initializePresence, stopPresence } = require('./modules/presenceManager');
-const { startTelegramBot, stopTelegramBot } = require('./modules/telegramBot');
+const { registerCommands } = require('./modules/core/commandRegistration');
+const { loadConfig } = require('./modules/core/configManager');
+const { connectDB } = require('./modules/core/db');
+const logger = require('./modules/core/logger');
+const webhookReporter = require('./modules/core/webhookReporter');
+const { initializeScheduledTasks, stopAllCronJobs, validateGuilds } = require('./modules/core/scheduledTasks');
+const { forceOfflineStatsPanel } = require('./modules/utils/statsPanel');
+const { initializePresence, stopPresence } = require('./modules/core/presenceManager');
+const { startTelegramBot, stopTelegramBot } = require('./modules/services/telegramBot');
 const http = require('http');
 const rateLimit = require('express-rate-limit');
 
@@ -242,7 +242,7 @@ async function main() {
                     return res.json({ error: 'Guild is currently inactive', inactive: true });
                 }
 
-                const { buildHallOfFameData } = require('./modules/hallOfFameUtils');
+                const { buildHallOfFameData } = require('./modules/utils/hallOfFameUtils');
                 const hallOfFameData = await buildHallOfFameData(guildId, difficulty);
 
                 res.json(hallOfFameData);
@@ -289,7 +289,7 @@ async function main() {
             logger.warn('DISCORD_TOKEN not found. Discord bot will not start.');
         } else {
             logger.info('Initializing Discord client...');
-            const { Events } = require('discord.js');
+            const { removeGuild } = require('./modules/core/configManager');
             client = new Client({
                 intents: [
                     GatewayIntentBits.Guilds,
@@ -346,7 +346,7 @@ async function main() {
 
             client.on('guildCreate', async (guild) => {
                 logger.info(`Joined guild: ${guild.name} (${guild.id})`);
-                require('./modules/webhookReporter').send({
+                require('./modules/core/webhookReporter').send({
                     phase: 'Guild Joined',
                     message: `Bot was added to a new server: **${guild.name}**`,
                     context: { guildId: guild.id, memberCount: guild.memberCount },
@@ -376,7 +376,7 @@ async function main() {
                 // Feedback feature requested logs
                 logger.info(`Bot removed event - Guild: ${guild.name}, ID: ${guild.id}, Owner: ${guild.ownerId || 'Unknown'}`);
 
-                require('./modules/webhookReporter').send({
+                require('./modules/core/webhookReporter').send({
                     phase: 'Guild Left',
                     message: `Bot was removed from server: **${guild.name}**`,
                     context: { guildId: guild.id },

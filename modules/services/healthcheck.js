@@ -1,5 +1,5 @@
 const axios = require('axios');
-const logger = require('./logger');
+const logger = require('../core/logger');
 
 /**
  * Ping a healthcheck URL stored in an environment variable.

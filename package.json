@@ -1,6 +1,6 @@
 {
   "name": "leetdiscord",
-  "version": "2.5.26",
+  "version": "2.6.7",
   "main": "index.js",
   "scripts": {
     "build": "npm install && cd frontend && npm install --legacy-peer-deps && npm run build",

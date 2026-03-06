@@ -1,13 +1,10 @@
 const cron = require('node-cron');
-const SystemConfig = require('./models/SystemConfig');
-const Guild = require('./models/Guild');
-const DailySubmission = require('./models/DailySubmission');
-const logger = require('./logger');
+const SystemConfig = require('../models/SystemConfig');
+const Guild = require('../models/Guild');
+const DailySubmission = require('../models/DailySubmission');
+const logger = require('../core/logger');
 
-const LEADERBOARD_CHANNEL_ID = process.env.LEADERBOARD_CHANNEL_ID;
-const STATS_GUILD_ID = process.env.STATS_GUILD_ID;
 const MESSAGE_ID_KEY = 'server_leaderboard_message_id';
-const TOP_GUILDS_LIMIT = parseInt(process.env.LEADERBOARD_TOP_GUILDS || '10', 10);
 
 let activeCronJob = null;
 
@@ -47,13 +44,16 @@ async function initializeServerLeaderboard(client) {
 async function updateServerLeaderboard(client) {
     try {
         // ping healthcheck for server leaderboard
-        const { ping } = require('./healthcheck');
+        const { ping } = require('../services/healthcheck');
         ping('HC_PING_SERVER_LEADERBOARD');
 
         logger.info('Updating server leaderboard...');
 
+        const STATS_GUILD_ID = process.env.STATS_GUILD_ID;
+        const LEADERBOARD_CHANNEL_ID = process.env.LEADERBOARD_CHANNEL_ID;
+
         if (!STATS_GUILD_ID || !LEADERBOARD_CHANNEL_ID) {
-            logger.error('STATS_GUILD_ID or LEADERBOARD_CHANNEL_ID is not set in environment variables');
+            logger.error(`STATS_GUILD_ID (${STATS_GUILD_ID}) or LEADERBOARD_CHANNEL_ID (${LEADERBOARD_CHANNEL_ID}) is not set in environment variables`);
             return;
         }
 
@@ -193,6 +193,7 @@ async function calculateGlobalMetrics(guildIds) {
  * Build the leaderboard embed (global + per-server breakdown)
  */
 function buildLeaderboardEmbed(metrics, statsGuild, client) {
+    const TOP_GUILDS_LIMIT = parseInt(process.env.LEADERBOARD_TOP_GUILDS || '10', 10);
     const fields = [
         {
             name: '🌐 Tracked Servers',
@@ -269,4 +270,3 @@ module.exports = {
     updateServerLeaderboard,
     stopServerLeaderboard
 };
-

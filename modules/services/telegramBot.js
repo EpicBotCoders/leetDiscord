@@ -1,6 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
-const logger = require('./logger');
-const { linkTelegramChat, getConnectionByChatId } = require('./configManager');
+const logger = require('../core/logger');
+const { linkTelegramChat, getConnectionByChatId } = require('../core/configManager');
 const { getUserCalendar } = require('./apiUtils');
 require('dotenv').config();
 

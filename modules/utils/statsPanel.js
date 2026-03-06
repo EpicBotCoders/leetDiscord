@@ -1,9 +1,9 @@
 const cron = require('node-cron');
-const SystemConfig = require('./models/SystemConfig');
-const Guild = require('./models/Guild');
-const logger = require('./logger');
+const SystemConfig = require('../models/SystemConfig');
+const Guild = require('../models/Guild');
+const logger = require('../core/logger');
 const mongoose = require('mongoose');
-const packageJson = require('../package.json');
+const packageJson = require('../../package.json');
 
 const STATS_GUILD_ID = process.env.STATS_GUILD_ID;
 const STATS_CHANNEL_ID = process.env.STATS_CHANNEL_ID;
@@ -47,7 +47,7 @@ async function initializeStatsPanel(client) {
 async function updateStatsPanel(client) {
     try {
         // ping healthcheck for stats panel
-        const { ping } = require('./healthcheck');
+        const { ping } = require('../services/healthcheck');
         ping('HC_PING_STATS_PANEL');
 
         logger.info('Updating stats panel...');

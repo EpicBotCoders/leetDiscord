@@ -1,5 +1,5 @@
 const axios = require('axios');
-const logger = require('./logger');
+const logger = require('../core/logger');
 
 const BASE_URL = 'https://healthchecks.io/api/v3';
 

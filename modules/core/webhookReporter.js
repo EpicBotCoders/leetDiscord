@@ -146,8 +146,6 @@ function postWebhook(payload) {
             res.on('end', () => {
                 if (res.statusCode >= 400) {
                     console.error(`[webhookReporter] Discord API Error ${res.statusCode}: ${responseBody}`);
-                } else {
-                    console.log(`[webhookReporter] Successfully sent webhook. Status: ${res.statusCode}`);
                 }
                 resolve();
             });

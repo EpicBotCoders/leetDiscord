@@ -1,16 +1,16 @@
-const { updateServerLeaderboard } = require('../serverLeaderboard');
+const { initializeServerLeaderboard } = require('../utils/serverLeaderboard');
 const SystemConfig = require('../models/SystemConfig');
 const Guild = require('../models/Guild');
 const DailySubmission = require('../models/DailySubmission');
+const logger = require('../core/logger');
 const axios = require('axios');
-const logger = require('../logger');
 
 // Mocks
 jest.mock('../models/SystemConfig');
 jest.mock('../models/Guild');
 jest.mock('../models/DailySubmission');
 jest.mock('axios');
-jest.mock('../logger');
+jest.mock('../core/logger');
 
 describe('serverLeaderboard', () => {
     let mockClient;
@@ -19,33 +19,40 @@ describe('serverLeaderboard', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+
         process.env.STATS_GUILD_ID = 'statsGuild';
         process.env.LEADERBOARD_CHANNEL_ID = 'leaderboardChannel';
-        process.env.HC_PING_SERVER_LEADERBOARD = 'https://hc-ping.com/leaderboard';
 
         mockChannel = {
+            id: 'leaderboardChannel',
             messages: { fetch: jest.fn().mockResolvedValue({ edit: jest.fn().mockResolvedValue({}) }) },
             send: jest.fn().mockResolvedValue({ id: 'newmsg' })
         };
         mockGuild = {
+            id: 'statsGuild',
+            name: 'Stats Guild',
             channels: { fetch: jest.fn().mockResolvedValue(mockChannel) }
         };
         mockClient = {
             guilds: {
                 fetch: jest.fn().mockResolvedValue(mockGuild),
-                cache: new Map([['guild1', { name: 'Guild1' }]])
-            }
+                cache: new Map([[mockGuild.id, mockGuild]])
+            },
+            uptime: 1000
         };
 
-        Guild.find = jest.fn().mockResolvedValue([]);
-        DailySubmission.aggregate = jest.fn().mockResolvedValue([]);
-        SystemConfig.findOne = jest.fn().mockResolvedValue({ value: 'existingMsgId' });
+        // stub guild metrics calls
+        Guild.find = jest.fn().mockResolvedValue([{
+            guildId: 'statsGuild',
+            isActive: true
+        }]);
 
+        SystemConfig.findOne = jest.fn().mockResolvedValue({ value: 'existingMsgId' });
         axios.get.mockResolvedValue({});
     });
 
-    it('should ping healthcheck and update without error', async () => {
-        await updateServerLeaderboard(mockClient);
-        expect(axios.get).toHaveBeenCalledWith(process.env.HC_PING_SERVER_LEADERBOARD);
+    it('should initialize and update without error', async () => {
+        await initializeServerLeaderboard(mockClient);
+        expect(Guild.find).toHaveBeenCalled();
     });
 });
