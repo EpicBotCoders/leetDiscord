@@ -1,14 +1,16 @@
-const { updateStatsPanel } = require('../statsPanel');
+const { updateStatsPanel } = require('../utils/statsPanel');
 const SystemConfig = require('../models/SystemConfig');
 const Guild = require('../models/Guild');
+const DailySubmission = require('../models/DailySubmission');
 const axios = require('axios');
-const logger = require('../logger');
+const logger = require('../core/logger');
 
 // Mocks
 jest.mock('../models/SystemConfig');
 jest.mock('../models/Guild');
+jest.mock('../models/DailySubmission');
 jest.mock('axios');
-jest.mock('../logger');
+jest.mock('../core/logger');
 
 describe('statsPanel', () => {
     let mockClient;

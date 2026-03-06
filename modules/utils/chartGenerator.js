@@ -2,18 +2,17 @@ const path = require('path');
 const { registerFont } = require('canvas');
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
 const { AttachmentBuilder } = require('discord.js');
-const logger = require('./logger');
+const logger = require('../core/logger');
 
 // Register font BEFORE creating canvas
 registerFont(
-    path.join(__dirname, '..', 'fonts', 'NotoSans-Regular.ttf'),
+    path.join(__dirname, '..', '..', 'fonts', 'NotoSans-Regular.ttf'),
     { family: 'Noto Sans' }
 );
 
 const fs = require('fs');
 console.log(
-    'Font exists:',
-    fs.existsSync(path.join(__dirname, '..', 'fonts', 'NotoSans-Regular.ttf'))
+    fs.existsSync(path.join(__dirname, '..', '..', 'fonts', 'NotoSans-Regular.ttf'))
 );
 
 const { Chart } = require('chart.js');

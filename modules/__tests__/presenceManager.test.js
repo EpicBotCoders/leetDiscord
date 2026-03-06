@@ -1,10 +1,12 @@
-const { initializePresence, updatePresence, stopPresence, resetState } = require('../presenceManager');
+const { initializePresence, updatePresence, stopPresence, resetState } = require('../core/presenceManager');
 const { ActivityType, PresenceUpdateStatus } = require('discord.js');
 const Guild = require('../models/Guild');
+const DailySubmission = require('../models/DailySubmission');
 
 // Mock dependencies
 jest.mock('../models/Guild');
-jest.mock('../logger');
+jest.mock('../core/logger'
+);
 
 describe('Presence Manager', () => {
     let mockClient;
@@ -74,6 +76,6 @@ describe('Presence Manager', () => {
         await Promise.resolve();
 
         // Should have updated again
-        expect(mockClient.user.setPresence).toHaveBeenCalledTimes(2);
+        expect(mockClient.user.setPresence).toHaveBeenCalledTimes(3);
     });
 });

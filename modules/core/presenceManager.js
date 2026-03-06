@@ -1,6 +1,6 @@
 const { ActivityType, PresenceUpdateStatus } = require('discord.js');
-const packageJson = require('../package.json');
-const Guild = require('./models/Guild');
+const packageJson = require('../../package.json');
+const Guild = require('../models/Guild');
 const logger = require('./logger');
 
 let activityIndex = 0;

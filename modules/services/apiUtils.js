@@ -26,8 +26,8 @@ async function getLeetCodeContests() {
     }
 }
 const axios = require('axios');
-const logger = require('./logger');
-const DailySubmission = require('./models/DailySubmission');
+const logger = require('../core/logger');
+const DailySubmission = require('../models/DailySubmission');
 
 // In-memory cache store
 const cache = {
@@ -425,8 +425,21 @@ async function getUserBadges(username) {
     }
 }
 
+function clearCache() {
+    cache.dailySlug = { value: null, expiry: 0 };
+    cache.problemDetails.clear();
+    cache.userSubmissions.clear();
+    cache.userCalendar.clear();
+    cache.userProfile.clear();
+    cache.userBadges.clear();
+    contestCache.value = null;
+    contestCache.expiry = 0;
+    logger.info('Cache cleared');
+}
+
 module.exports = {
     getDailySlug,
+    getLeetCodeContests,
     getUserSubmissions,
     getUserCalendar,
     getUserProfile,
@@ -436,5 +449,5 @@ module.exports = {
     getBestDailySubmission,
     parseDuration,
     parseMemory,
-    getLeetCodeContests
+    clearCache
 };

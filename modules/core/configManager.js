@@ -1,6 +1,7 @@
-const Guild = require('./models/Guild');
+const Guild = require('../models/Guild');
 const logger = require('./logger');
-const { getUserCalendar } = require('./apiUtils');
+const { getUserCalendar } = require('../services/apiUtils');
+const TelegramUser = require('../models/TelegramUser');
 require('dotenv').config();
 
 async function loadConfig() {
@@ -306,7 +307,7 @@ async function updateUserStats(guildId, username) {
     }
 }
 
-const TelegramUser = require('./models/TelegramUser');
+
 
 async function setTelegramToken(guildId, discordId, token) {
     const guild = await Guild.findOne({ guildId });

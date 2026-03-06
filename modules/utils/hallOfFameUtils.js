@@ -1,5 +1,5 @@
-const DailySubmission = require('./models/DailySubmission');
-const Guild = require('./models/Guild');
+const DailySubmission = require('../models/DailySubmission');
+const Guild = require('../models/Guild');
 
 /**
  * Parse difficulty filter from query parameter
