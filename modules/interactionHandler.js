@@ -11,7 +11,7 @@ const { handleProfile, handleAddUser, handleRemoveUser, handleListUsers, handleL
 const { handleSetChannel, handleSetAdmin, handleToggleBroadcast, handleLeaderboard, handleForceCheck, handleToggleContestReminder, handleManageCron, handleConfig } = require('./handlers/adminHandlers');
 const { handleBroadcast, handleBroadcastLogs } = require('./handlers/broadcastHandlers');
 const { handleHealthchecks } = require('./handlers/hcHandlers');
-const { handleInvite, handleBotInfo, handleStatus, handleContest, handleDaily, handleHallOfFame, handleTelegram } = require('./handlers/miscHandlers');
+const { handleInvite, handleBotInfo, handleStatus, handleContest, handleDaily, handleHallOfFame, handleTelegram, handleHelp } = require('./handlers/miscHandlers');
 const { handleLeaderboardPagination, handleBroadcastLogsPagination, handleWelcomeBackRestore, handleBroadcastSubmit } = require('./handlers/uiHandler');
 
 // Export formatLeetCodeContestEmbed for index.js if needed (though it should be in utils)
@@ -44,7 +44,7 @@ async function handleInteraction(interaction) {
                 case 'invite': await handleInvite(interaction); break;
                 case 'status': await handleStatus(interaction); break;
                 case 'contest': await handleContest(interaction); break;
-                case 'help':
+                case 'help': await handleHelp(interaction); break;
                 case 'botinfo': await handleBotInfo(interaction); break;
                 case 'broadcast': await handleBroadcast(interaction); break;
                 case 'broadcastlogs': await handleBroadcastLogs(interaction); break;

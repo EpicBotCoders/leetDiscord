@@ -3,8 +3,23 @@ const logger = require('../core/logger');
 const { getDailySlug, getBestDailySubmission, getUpcomingContests } = require('../services/apiUtils');
 const { formatLeetCodeContestEmbed } = require('../utils/embeds');
 const { setTelegramToken, toggleTelegramUpdates, getTelegramUser, getGuildUsers } = require('../core/configManager');
+const { commandDefinitions } = require('../core/commandRegistration');
 const axios = require('axios');
 const { safeDeferReply, safeReply } = require('../utils/interactionUtils');
+
+function getCategoryEmoji(category) {
+    const map = {
+        'Setup': '⚙️',
+        'Info': 'ℹ️',
+        'Information': 'ℹ️',
+        'Monitoring': '📊',
+        'User Management': '👥',
+        'Scheduling': '⏰',
+        'Notifications': '🔔',
+        'Admin': '🛡️'
+    };
+    return map[category] || '📌';
+}
 
 async function handleInvite(interaction) {
     const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${interaction.client.user.id}&permissions=19456&scope=bot%20applications.commands`;
@@ -276,6 +291,54 @@ async function handleTelegram(interaction, hasAdminAccess) {
     }
 }
 
+async function handleHelp(interaction) {
+    const categories = {};
+
+    // Group commands by category based on definitions
+    commandDefinitions.forEach(cmd => {
+        if (cmd.hidden) return;
+        if (!categories[cmd.category]) {
+            categories[cmd.category] = [];
+        }
+        categories[cmd.category].push(cmd.data);
+    });
+
+    const fields = Object.entries(categories).map(([category, commands]) => {
+        const commandList = commands.map(cmd => {
+            let desc = `**\`/${cmd.name}\`**\n└ ${cmd.description}`;
+
+            // Add subcommand info if available
+            if (cmd.options && cmd.options.length > 0) {
+                const subcommands = cmd.options.filter(opt => opt.constructor.name === 'SlashCommandSubcommandBuilder');
+                if (subcommands.length > 0) {
+                    const subNames = subcommands.map(s => s.name).join(', ');
+                    desc += `\n└ Subcommands: ${subNames}`;
+                }
+            }
+            return desc;
+        }).join('\n\n');
+
+        return {
+            name: `${getCategoryEmoji(category)} ${category}`,
+            value: commandList,
+            inline: false
+        };
+    });
+
+    const helpEmbed = {
+        color: 0x5865F2,
+        title: '📖 LeetCode Discord Bot - Command Help',
+        description: `Here are all available commands organized by category.\n\n[Need help? Join our Support Server](${process.env.DISCORD_SERVER_INVITE_LINK || 'https://discord.gg/4t5zg5SV69'})`,
+        fields: fields,
+        footer: {
+            text: 'LeetCode Discord Bot • GitHub: mochiron-desu/leetDiscord'
+        },
+        timestamp: new Date()
+    };
+
+    await interaction.reply({ embeds: [helpEmbed] });
+}
+
 module.exports = {
     handleInvite,
     handleBotInfo,
@@ -283,5 +346,6 @@ module.exports = {
     handleContest,
     handleDaily,
     handleHallOfFame,
-    handleTelegram
+    handleTelegram,
+    handleHelp
 };
