@@ -118,11 +118,11 @@ async function updateStatsPanel(client) {
 async function calculateMetrics(client) {
     try {
         // Total configured guilds
-        const totalGuilds = await Guild.countDocuments({ isActive: true });
+        const totalGuilds = await Guild.countDocuments({ isActive: { $ne: false } });
         const inactiveGuilds = await Guild.countDocuments({ isActive: false });
 
         // Total active users (sum of users tracked across all active guilds)
-        const guilds = await Guild.find({ isActive: true });
+        const guilds = await Guild.find({ isActive: { $ne: false } });
         let totalUsers = 0;
         let contestReminderEnabledCount = 0;
         for (const guild of guilds) {

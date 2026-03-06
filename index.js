@@ -153,10 +153,10 @@ async function main() {
         // API Endpoints
         app.get('/api/stats', async (req, res) => {
             try {
-                const activeGuildsCount = await Guild.countDocuments({ isActive: true });
+                const activeGuildsCount = await Guild.countDocuments({ isActive: { $ne: false } });
                 const totalSubmissions = await DailySubmission.countDocuments();
 
-                const guilds = await Guild.find({ isActive: true }, 'users');
+                const guilds = await Guild.find({ isActive: { $ne: false } }, 'users');
                 const uniqueUsers = new Set();
                 for (const guild of guilds) {
                     if (guild.users) {
