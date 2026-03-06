@@ -186,11 +186,31 @@ async function handleManageCron(interaction) {
             const hours = interaction.options.getInteger('hours');
             const minutes = interaction.options.getInteger('minutes');
             const result = await addCronJob(interaction.guildId, hours, minutes);
+
+            if (result.startsWith('Added new check time')) {
+                const { invalidateCronJobsCache } = require('./autocompleteHandler');
+                invalidateCronJobsCache(interaction.guildId);
+
+                const { stopAllCronJobs, initializeScheduledTasks } = require('../core/scheduledTasks');
+                stopAllCronJobs();
+                await initializeScheduledTasks(interaction.client);
+            }
+
             await safeReply(interaction, result);
         } else if (subcommand === 'remove') {
             const timeStr = interaction.options.getString('time');
-            const [minutes, hours] = timeStr.split(' ');
+            const [hours, minutes] = timeStr.split(':');
             const result = await removeCronJob(interaction.guildId, parseInt(hours), parseInt(minutes));
+
+            if (result.startsWith('Removed check time')) {
+                const { invalidateCronJobsCache } = require('./autocompleteHandler');
+                invalidateCronJobsCache(interaction.guildId);
+
+                const { stopAllCronJobs, initializeScheduledTasks } = require('../core/scheduledTasks');
+                stopAllCronJobs();
+                await initializeScheduledTasks(interaction.client);
+            }
+
             await safeReply(interaction, result);
         } else if (subcommand === 'list') {
             const jobs = await listCronJobs(interaction.guildId);
@@ -200,7 +220,7 @@ async function handleManageCron(interaction) {
             }
             const jobStrings = jobs.map(j => {
                 const [min, hour] = j.split(' ');
-                return `${hour.padStart(2, '0')}:${min.padStart(2, '0')}`;
+                return `${hour.padStart(2, '0')}:${min.padStart(2, '0')} UTC`;
             });
             await safeReply(interaction, `**Scheduled Check Times:**\n${jobStrings.join(', ')}`);
         }
