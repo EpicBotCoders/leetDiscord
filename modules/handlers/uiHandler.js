@@ -7,40 +7,80 @@ const {
     buildLeaderboardComponents
 } = require('../utils/leaderboardUtils');
 const { buildBroadcastLogsPage } = require('../utils/broadcastUtils');
-const { getAllGuildConfigs } = require('../core/configManager');
+const { getAllGuildConfigs, getGuildConfig, getGuildUsers } = require('../core/configManager');
 const { safeDeferReply, safeReply } = require('../utils/interactionUtils');
+const { MessageFlags } = require('discord.js');
 
-async function handleLeaderboardPagination(interaction, getGuildUsers) {
-    const [lb, guildId, ownerId, metric, period, pageStr] = interaction.customId.split(':');
-    const page = parseInt(pageStr, 10);
-
-    if (interaction.user.id !== ownerId) {
-        await safeReply(interaction, { content: 'Only the user who requested the leaderboard can use these buttons.', flags: 64 });
-        return;
-    }
-
+async function handleLeaderboardPagination(interaction) {
     try {
-        const guildConfig = await Guild.findOne({ guildId });
-        const guildUsers = await getGuildUsers(guildId);
+        const parts = interaction.customId.split(':');
+        // lb:guildId:ownerId:metric:period:page
+        if (parts.length !== 6) {
+            await interaction.reply({ content: 'Invalid leaderboard state.', flags: MessageFlags.Ephemeral });
+            return;
+        }
+
+        const [, guildId, ownerId, metric, period, pageStr] = parts;
+
+        if (guildId !== interaction.guildId) {
+            await interaction.reply({ content: 'This leaderboard belongs to another server.', flags: MessageFlags.Ephemeral });
+            return;
+        }
+
+        if (interaction.user.id !== ownerId) {
+            await interaction.reply({ content: 'Only the user who requested this leaderboard can change pages.', flags: MessageFlags.Ephemeral });
+            return;
+        }
+
+        const currentPage = parseInt(pageStr, 10) || 1;
+
+        const guildUsers = await getGuildUsers(interaction.guildId);
+        const guildConfig = await getGuildConfig(interaction.guildId);
 
         const { rows, totalUsers } = await buildLeaderboardRows(
-            guildId,
+            interaction.guildId,
             guildUsers,
             guildConfig,
             metric,
             period
         );
 
-        const totalPages = Math.ceil(rows.length / 10);
-        const start = (page - 1) * 10;
-        const pageRows = rows.slice(start, start + 10);
+        if (rows.length === 0) {
+            await interaction.update({ content: 'No leaderboard data available for this period yet.', components: [], embeds: [] });
+            return;
+        }
 
-        const embed = buildLeaderboardEmbed(interaction.guild, metric, period, pageRows, page, totalPages, totalUsers);
-        const components = buildLeaderboardComponents(guildId, ownerId, metric, period, page, totalPages);
+        const pageSize = 10;
+        const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+        const page = Math.min(Math.max(1, currentPage), totalPages);
+        const startIndex = (page - 1) * pageSize;
+        const pagedRows = rows.slice(startIndex, startIndex + pageSize);
+
+        const embed = buildLeaderboardEmbed(
+            interaction.guild,
+            metric,
+            period,
+            pagedRows,
+            page,
+            totalPages,
+            totalUsers
+        );
+
+        const components = buildLeaderboardComponents(
+            interaction.guildId,
+            ownerId,
+            metric,
+            period,
+            page,
+            totalPages
+        );
 
         await interaction.update({ embeds: [embed], components });
     } catch (error) {
         logger.error('Error in handleLeaderboardPagination:', error);
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: 'Error updating leaderboard.', flags: MessageFlags.Ephemeral });
+        }
     }
 }
 

@@ -40,7 +40,7 @@ async function handleInteraction(interaction) {
                 case 'removeuser': await handleRemoveUser(interaction, removeUser); break;
                 case 'check':
                 case 'forcecheck': await handleForceCheck(interaction, performDailyCheck); break;
-                case 'leaderboard': await handleLeaderboard(interaction, getGuildUsers); break;
+                case 'leaderboard': await handleLeaderboard(interaction); break;
                 case 'invite': await handleInvite(interaction); break;
                 case 'status': await handleStatus(interaction); break;
                 case 'contest': await handleContest(interaction); break;
@@ -98,7 +98,7 @@ async function handleInteraction(interaction) {
 
         try {
             if (customId.startsWith('lb:')) {
-                await handleLeaderboardPagination(interaction, getGuildUsers);
+                await handleLeaderboardPagination(interaction);
             } else if (customId.startsWith('blpg:')) {
                 await handleBroadcastLogsPagination(interaction);
             } else if (customId.startsWith('guild_restore_')) {

@@ -85,15 +85,22 @@ async function handleToggleBroadcast(interaction, hasAdminAccess) {
     }
 }
 
-async function handleLeaderboard(interaction, getGuildUsers) {
+async function handleLeaderboard(interaction) {
+    const period = interaction.options.getString('period') || 'daily';
     const metric = interaction.options.getString('metric') || 'streak';
-    const period = interaction.options.getString('period') || 'all_time';
+    const ephemeral = interaction.options.getBoolean('ephemeral') || false;
 
-    await safeDeferReply(interaction);
+    await interaction.deferReply({ flags: ephemeral ? MessageFlags.Ephemeral : undefined });
 
     try {
-        const guildConfig = await getGuildConfig(interaction.guildId);
         const guildUsers = await getGuildUsers(interaction.guildId);
+        if (Object.keys(guildUsers).length === 0) {
+            await interaction.editReply('No users are being tracked in this server. Use `/adduser` to start tracking!');
+            return;
+        }
+
+        const guildConfig = await getGuildConfig(interaction.guildId);
+        const page = 1;
 
         const { rows, totalUsers } = await buildLeaderboardRows(
             interaction.guildId,
@@ -104,19 +111,37 @@ async function handleLeaderboard(interaction, getGuildUsers) {
         );
 
         if (rows.length === 0) {
-            await safeReply(interaction, 'No data found for this leaderboard category.');
+            await interaction.editReply('No leaderboard data available for this period yet.');
             return;
         }
 
-        const totalPages = Math.ceil(rows.length / 10);
-        const page1Rows = rows.slice(0, 10);
-        const embed = buildLeaderboardEmbed(interaction.guild, metric, period, page1Rows, 1, totalPages, totalUsers);
-        const components = buildLeaderboardComponents(interaction.guildId, interaction.user.id, metric, period, 1, totalPages);
+        const pageSize = 10;
+        const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+        const pagedRows = rows.slice(0, pageSize);
 
-        await safeReply(interaction, { embeds: [embed], components });
+        const embed = buildLeaderboardEmbed(
+            interaction.guild,
+            metric,
+            period,
+            pagedRows,
+            page,
+            totalPages,
+            totalUsers
+        );
+
+        const components = buildLeaderboardComponents(
+            interaction.guildId,
+            interaction.user.id,
+            metric,
+            period,
+            page,
+            totalPages
+        );
+
+        await interaction.editReply({ embeds: [embed], components });
     } catch (error) {
         logger.error('Error in handleLeaderboard:', error);
-        await safeReply(interaction, 'An error occurred while generating the leaderboard.');
+        await interaction.editReply('An error occurred while building the leaderboard.');
     }
 }
 

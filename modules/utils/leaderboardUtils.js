@@ -60,110 +60,193 @@ function buildRankedFields(results, formatter = null) {
 }
 
 /**
- * Computes a date range based on a given period (all_time, monthly, weekly)
+ * Computes a date range based on a given period (daily, weekly, monthly, all_time)
  */
 function computeDateRange(period) {
     const now = new Date();
-    let startDate;
+    let start, end;
 
     switch (period) {
+        case 'daily':
+            start = new Date(now);
+            start.setUTCHours(0, 0, 0, 0);
+            end = new Date(now);
+            end.setUTCHours(23, 59, 59, 999);
+            break;
         case 'monthly':
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+            end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
             break;
         case 'weekly':
             const day = now.getUTCDay();
             const diff = now.getUTCDate() - day + (day === 0 ? -6 : 1); // Monday
-            startDate = new Date(now.setDate(diff));
-            startDate.setUTCHours(0, 0, 0, 0);
+            start = new Date(now.getTime());
+            start.setUTCDate(diff);
+            start.setUTCHours(0, 0, 0, 0);
+            end = new Date(start.getTime());
+            end.setUTCDate(start.getUTCDate() + 6);
+            end.setUTCHours(23, 59, 59, 999);
             break;
         case 'all_time':
         default:
-            startDate = new Date(0); // Epoch
+            start = new Date(0); // Epoch
+            end = new Date(now.getTime() + 86400000); // 1 day from now
     }
 
-    return { $gte: startDate };
+    return { start, end };
 }
 
 /**
  * Builds leaderboard rows for a specific server and metric
  */
 async function buildLeaderboardRows(guildId, guildUsers, guildConfig, metric, period) {
-    const dateRange = computeDateRange(period);
-    const users = Object.keys(guildUsers);
+    const usernames = Object.keys(guildUsers);
+    const totalUsers = usernames.length;
 
-    if (users.length === 0) return { rows: [], totalUsers: 0 };
+    if (metric === 'streak') {
+        const rows = usernames.map(username => {
+            const stats = guildConfig.userStats?.get(username);
+            return {
+                username,
+                discordId: guildUsers[username],
+                value: stats?.streak || 0
+            };
+        }).filter(row => row.value > 0);
 
-    const rows = await Promise.all(users.map(async (username) => {
-        const stats = await DailySubmission.aggregate([
-            {
-                $match: {
-                    guildId,
-                    leetcodeUsername: username,
-                    date: dateRange
-                }
-            },
-            {
-                $group: {
-                    _id: null,
-                    count: { $sum: 1 },
-                    avgRuntime: { $avg: { $toDouble: { $trim: { input: { $replaceAll: { input: "$runtime", find: " ms", replacement: "" } } } } } }
-                }
+        rows.sort((a, b) => b.value - a.value || a.username.localeCompare(b.username));
+        return { rows, totalUsers };
+    }
+
+    const { start, end } = computeDateRange(period);
+
+    const match = { guildId };
+    if (start && end) {
+        match.date = { $gte: start, $lt: end };
+    }
+
+    const pipeline = [
+        { $match: match },
+        {
+            $group: {
+                _id: { userId: '$userId', username: '$leetcodeUsername' },
+                problemsSolved: { $sum: 1 },
+                activeDates: { $addToSet: '$date' }
             }
-        ]);
+        },
+        {
+            $project: {
+                _id: 0,
+                userId: '$_id.userId',
+                username: '$_id.username',
+                problemsSolved: 1,
+                activeDays: { $size: '$activeDates' }
+            }
+        }
+    ];
 
-        const userStats = stats[0] || { count: 0, avgRuntime: 0 };
+    const aggResults = await DailySubmission.aggregate(pipeline);
+
+    const rows = aggResults.map(doc => {
+        const username = doc.username;
+        const discordId = guildUsers[username] || null;
+        let value = 0;
+
+        if (metric === 'problems_solved') {
+            value = doc.problemsSolved || 0;
+        } else if (metric === 'active_days') {
+            value = doc.activeDays || 0;
+        }
+
         return {
             username,
-            value: metric === 'streak' ? userStats.count : (userStats.avgRuntime || 0).toFixed(2) + ' ms',
-            numericValue: metric === 'streak' ? userStats.count : (userStats.avgRuntime || Infinity)
+            discordId,
+            value
         };
-    }));
+    }).filter(row => row.value > 0);
 
-    // Sort rows
-    rows.sort((a, b) => {
-        if (metric === 'streak') return b.numericValue - a.numericValue;
-        return a.numericValue - b.numericValue;
-    });
+    rows.sort((a, b) => b.value - a.value || a.username.localeCompare(b.username));
 
-    return { rows, totalUsers: users.length };
+    return { rows, totalUsers };
 }
 
-function buildLeaderboardEmbed(guild, metric, period, pageRows, page, totalPages, totalUsers) {
-    const metricTitle = metric === 'streak' ? 'Solved Count' : 'Avg Runtime';
-    const periodTitle = period === 'all_time' ? 'All Time' : (period === 'monthly' ? 'This Month' : 'This Week');
+function buildLeaderboardEmbed(guild, metric, period, rows, page, totalPages, totalUsers) {
+    const metricLabels = {
+        streak: 'Current Streak',
+        problems_solved: 'Problems Solved',
+        active_days: 'Active Days'
+    };
 
-    const description = pageRows.map((row, i) => {
-        const rank = (page - 1) * 10 + i + 1;
-        const medal = rank === 1 ? '🥇' : (rank === 2 ? '🥈' : (rank === 3 ? '🥉' : '🔹'));
-        return `**${rank}.** ${medal} **${row.username}** — ${row.value}`;
-    }).join('\n');
+    const periodLabels = {
+        daily: 'Daily',
+        weekly: 'Weekly',
+        monthly: 'Monthly',
+        all_time: 'All Time'
+    };
 
-    return {
-        title: `🏆 ${guild.name} Leaderboard`,
-        description: `**Metric:** ${metricTitle} | **Period:** ${periodTitle}\n\n${description || 'No data found.'}`,
-        color: 0xf1c40f,
-        footer: { text: `Page ${page}/${totalPages} • Total Tracked: ${totalUsers}` },
+    const fields = rows.map((row, index) => {
+        const globalIndex = (page - 1) * 10 + index;
+        const medals = ['🥇', '🥈', '🥉'];
+        const medal = globalIndex < 3 ? medals[globalIndex] : '';
+        const mention = row.discordId ? `<@${row.discordId}>` : row.username;
+
+        let valueLine;
+        if (metric === 'streak') {
+            valueLine = `${row.value} day${row.value === 1 ? '' : 's'}`;
+        } else if (metric === 'problems_solved') {
+            valueLine = `${row.value} problem${row.value === 1 ? '' : 's'}`;
+        } else {
+            valueLine = `${row.value} day${row.value === 1 ? '' : 's'}`;
+        }
+
+        return {
+            name: `**${globalIndex + 1}. ${row.username}** ${medal}`,
+            value: `👤 ${mention}\n${metricLabels[metric]}: **${valueLine}**`,
+            inline: true
+        };
+    });
+
+    const embed = {
+        color: 0x00d9ff,
+        title: `🏆 Leaderboard – ${metricLabels[metric]} – ${periodLabels[period]}`,
+        description: `Ranking for ${guild?.name || 'this server'}`,
+        fields,
+        footer: {
+            text: `Tracked users: ${totalUsers} • Page ${page} / ${totalPages}` + (metric === 'streak' ? ' • Streaks are all-time values' : '')
+        },
         timestamp: new Date()
     };
+
+    return embed;
 }
 
 function buildLeaderboardComponents(guildId, ownerId, metric, period, page, totalPages) {
-    if (totalPages <= 1) return [];
+    if (totalPages <= 1) {
+        return [];
+    }
 
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId(`lb:${guildId}:${ownerId}:${metric}:${period}:${page - 1}`)
-            .setLabel('Previous')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(page === 1),
-        new ButtonBuilder()
-            .setCustomId(`lb:${guildId}:${ownerId}:${metric}:${period}:${page + 1}`)
-            .setLabel('Next')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(page === totalPages)
-    );
+    const components = [];
 
-    return [row];
+    const row = new ActionRowBuilder();
+
+    const prevPage = Math.max(1, page - 1);
+    const nextPage = Math.min(totalPages, page + 1);
+
+    const prevButton = new ButtonBuilder()
+        .setCustomId(`lb:${guildId}:${ownerId}:${metric}:${period}:${prevPage}`)
+        .setLabel('Previous')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page === 1);
+
+    const nextButton = new ButtonBuilder()
+        .setCustomId(`lb:${guildId}:${ownerId}:${metric}:${period}:${nextPage}`)
+        .setLabel('Next')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page === totalPages);
+
+    row.addComponents(prevButton, nextButton);
+    components.push(row);
+
+    return components;
 }
 
 module.exports = {
