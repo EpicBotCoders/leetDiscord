@@ -1,3 +1,4 @@
+const { MessageFlags } = require('discord.js');
 const logger = require('../core/logger');
 const {
     getGuildConfig,
@@ -6,7 +7,10 @@ const {
     toggleBroadcast,
     addCronJob,
     removeCronJob,
-    listCronJobs
+    listCronJobs,
+    getGuildUsers,
+    getAdminRole,
+    getBroadcastEnabled
 } = require('../core/configManager');
 const {
     buildLeaderboardRows,
@@ -14,6 +18,8 @@ const {
     buildLeaderboardComponents
 } = require('../utils/leaderboardUtils');
 const { safeDeferReply, safeReply } = require('../utils/interactionUtils');
+const { hasAdminAccess } = require('../core/auth');
+const TelegramUser = require('../models/TelegramUser');
 
 async function handleSetChannel(interaction) {
     const channel = interaction.options.getChannel('channel');
@@ -180,35 +186,110 @@ async function handleManageCron(interaction) {
 }
 
 async function handleConfig(interaction) {
-    await safeDeferReply(interaction, true);
+    const isAdmin = await hasAdminAccess(interaction, getAdminRole);
+    if (!isAdmin) {
+        await interaction.reply({
+            content: 'You need the configured Admin role (or Administrator permission) to view the configuration.',
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     try {
-        const config = await getGuildConfig(interaction.guildId);
-        if (!config) {
-            await safeReply(interaction, 'This server is not configured yet. Use `/setchannel` to begin.');
+        const guildConfig = await getGuildConfig(interaction.guildId);
+        if (!guildConfig) {
+            await interaction.editReply('This server is not configured yet. Please run `/setchannel` first.');
             return;
         }
 
+        const guildUsers = await getGuildUsers(interaction.guildId);
+        const trackedUsernames = Object.keys(guildUsers);
+
+        const cronSchedules = await listCronJobs(interaction.guildId);
+        const formattedCron = cronSchedules.length
+            ? cronSchedules.map(schedule => {
+                const [minutes, hours] = schedule.split(' ');
+                return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')} UTC`;
+            }).join('\n')
+            : 'None configured';
+
+        const totalTrackedUsers = trackedUsernames.length;
+        const discordLinkedUsers = Object.values(guildUsers).filter(id => !!id).length;
+
+        const telegramEnabledGlobally = !!process.env.TELEGRAM_BOT_TOKEN;
+
+        let telegramEnabledCount = 0;
+        if (telegramEnabledGlobally && totalTrackedUsers > 0) {
+            telegramEnabledCount = await TelegramUser.countDocuments({
+                leetcodeUsername: { $in: trackedUsernames },
+                isEnabled: true,
+                telegramChatId: { $ne: null }
+            });
+        }
+
+        const adminRoleId = await getAdminRole(interaction.guildId);
+        let adminRoleDisplay = 'Not configured (fallback: Discord Administrator)';
+        if (adminRoleId) {
+            const role = interaction.guild?.roles?.cache?.get(adminRoleId);
+            adminRoleDisplay = role ? role.toString() : `<@&${adminRoleId}>`;
+        }
+
+        const broadcastEnabled = await getBroadcastEnabled(interaction.guildId);
+        const broadcastStatus = broadcastEnabled ? '✅ **Enabled**' : '❌ **Disabled**';
+
+        const announcementChannel = guildConfig.channelId
+            ? `<#${guildConfig.channelId}>`
+            : 'Not set (use `/setchannel`)';
+
         const embed = {
-            color: 0x3498db,
-            title: `⚙️ Bot Configuration: ${interaction.guild.name}`,
+            color: 0x00d9ff,
+            title: '⚙️ Server Configuration Overview',
             fields: [
-                { name: 'Channel', value: config.channelId ? `<#${config.channelId}>` : 'Not set', inline: true },
-                { name: 'Admin Role', value: config.adminRoleId ? `<@&${config.adminRoleId}>` : 'Not set', inline: true },
-                { name: 'Broadcasts', value: config.broadcastEnabled !== false ? '✅ Enabled' : '❌ Disabled', inline: true },
                 {
-                    name: 'Check Times', value: config.cronJobs.length > 0 ? config.cronJobs.map(j => {
-                        const [m, h] = j.schedule.split(' ');
-                        return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
-                    }).join(', ') : 'None', inline: false
+                    name: '📢 Announcement Channel',
+                    value: announcementChannel,
+                    inline: true
                 },
-                { name: 'Contest Reminders', value: config.contestRemindersEnabled ? '✅ Enabled' : '❌ Disabled', inline: true }
+                {
+                    name: '⏰ Check Schedule',
+                    value: formattedCron,
+                    inline: true
+                },
+                {
+                    name: '👥 Tracked Users',
+                    value: `Total: **${totalTrackedUsers}**\nLinked to Discord: **${discordLinkedUsers}**`,
+                    inline: true
+                },
+                {
+                    name: '📲 Telegram Integration',
+                    value: telegramEnabledGlobally
+                        ? `Status: **Enabled** (token configured)\nUsers with notifications on: **${telegramEnabledCount}**`
+                        : 'Status: **Disabled** (no Telegram bot token configured)',
+                    inline: true
+                },
+                {
+                    name: '🛡️ Admin Role',
+                    value: adminRoleDisplay,
+                    inline: true
+                },
+                {
+                    name: '📡 System Broadcasts',
+                    value: broadcastStatus,
+                    inline: true
+                }
             ],
+            footer: {
+                text: 'Use /setchannel, /managecron, /adduser, /telegram, and /togglebroadcast to update this configuration.'
+            },
             timestamp: new Date()
         };
-        await safeReply(interaction, { embeds: [embed] });
+
+        await interaction.editReply({ embeds: [embed] });
     } catch (error) {
         logger.error('Error in handleConfig:', error);
-        await safeReply(interaction, '❌ Failed to fetch configuration.');
+        await interaction.editReply('An error occurred while fetching the configuration.');
     }
 }
 
