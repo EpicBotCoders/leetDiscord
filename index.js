@@ -11,6 +11,7 @@ const logger = require('./modules/logger');
 const webhookReporter = require('./modules/webhookReporter');
 const { initializeScheduledTasks, stopAllCronJobs, validateGuilds } = require('./modules/scheduledTasks');
 const { forceOfflineStatsPanel } = require('./modules/statsPanel');
+const { initializePresence, stopPresence } = require('./modules/presenceManager');
 const { startTelegramBot, stopTelegramBot } = require('./modules/telegramBot');
 const http = require('http');
 const rateLimit = require('express-rate-limit');
@@ -329,6 +330,9 @@ async function main() {
                     logger.info('Step 4: Initializing autocomplete cache...');
                     await initializeAutocompleteCache();
 
+                    logger.info('Step 5: Initializing presence manager...');
+                    initializePresence(c);
+
                     logger.info('Discord initialization complete');
                     logger.info("============ BOT IS READY ============");
                 } catch (error) {
@@ -500,6 +504,9 @@ function setupGracefulShutdown(client, server) {
             // Stop all scheduled cron jobs
             logger.info('Stopping scheduled tasks...');
             stopAllCronJobs();
+
+            // Stop presence updates
+            stopPresence();
 
             // Stop Telegram Bot
             await stopTelegramBot();
