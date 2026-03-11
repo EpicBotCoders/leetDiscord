@@ -1,23 +1,18 @@
-const cron = require('node-cron');
 const {
     getUserSubmissions,
     getDailySlug,
     getBestDailySubmission,
-    getLeetCodeContests,
-    parseDuration,
-    parseMemory
+    getLeetCodeContests
 } = require('../services/apiUtils');
 const { updateUserStats, getGuildConfig } = require('./configManager');
 const { sendTelegramMessage } = require('../services/telegramBot');
 const { generateSubmissionChart } = require('../utils/chartGenerator');
-const { initializeStatsPanel } = require('../utils/statsPanel');
-const { initializeServerLeaderboard } = require('../utils/serverLeaderboard');
+const cron = require('node-cron');
 const { PermissionsBitField } = require('discord.js');
 const axios = require('axios');
 const logger = require('./logger');
 const Guild = require('../models/Guild');
 const DailySubmission = require('../models/DailySubmission');
-const { formatLeetCodeContestEmbed } = require('../utils/embeds');
 const { buildRankedFields } = require('../utils/leaderboardUtils');
 
 const activeTasks = [];
@@ -162,7 +157,11 @@ async function performDailyCheck(client, guildId, channelId) {
                                     userId: discordId || username,
                                     questionTitle: problem.title,
                                     difficulty: problem.difficulty,
-                                    submissionTime
+                                    submissionTime,
+                                    runtime: todaysSubmission.runtime,
+                                    memory: todaysSubmission.memory,
+                                    langName: todaysSubmission.langName,
+                                    url: todaysSubmission.url
                                 }
                             },
                             { upsert: true, new: true }
@@ -237,12 +236,75 @@ async function performDailyCheck(client, guildId, channelId) {
 }
 
 /**
- * Periodically check for submissions without sending messages
+ * Renders and sends the final daily summary embed for a single guild.
+ *
+ * Builds a ranked performance embed using {@link buildRankedFields} and a
+ * runtime/memory bar chart using {@link generateSubmissionChart}, then sends
+ * them as a combined Discord message to the guild's configured announcement
+ * channel.
+ *
+ * @param {import('discord.js').Client} client - The Discord client.
+ * @param {import('../models/Guild')} guildConfig - Mongoose Guild document.
+ * @param {{ title: string, difficulty: string }} problem - Today's LeetCode problem metadata.
+ * @param {Array<{ username: string, discordId: string, submission: object }>} submissionsData
+ *   - Completed submissions to include in the report.
+ * @returns {Promise<void>}
  */
-async function performSilentCheck(client, guildId) {
+async function broadcastDailySummaryToChannel(client, guildConfig, problem, submissionsData) {
+    const channel = await client.channels.fetch(guildConfig.channelId).catch(() => null);
+    if (!channel) return;
+
+    // Build results in the format expected by utils
+    const results = submissionsData.map(data => ({
+        leetcodeUsername: data.username,
+        username: data.username, // for chart compatibility
+        discordId: data.discordId !== data.username ? data.discordId : null,
+        submission: data.submission
+    }));
+
+    const chartAttachment = await generateSubmissionChart(results);
+    const rankedFields = buildRankedFields(results);
+
+    const embed = {
+        color: 0x00d9ff,
+        title: `🏆 Daily Challenge Final Standings`,
+        description: `Summary for **${problem.title}** (${problem.difficulty})`,
+        fields: rankedFields,
+        image: chartAttachment ? { url: 'attachment://submission-chart.png' } : null,
+        footer: {
+            text: `${submissionsData.length} user(s) completed today's challenge`
+        },
+        timestamp: new Date()
+    };
+
+    const messageOptions = { embeds: [embed], files: chartAttachment ? [chartAttachment] : [] };
+    await channel.send(messageOptions);
+}
+
+/**
+ * Continuously keeps per-guild submission data and the live progress message
+ * up to date throughout the day. Runs once per hour for each active guild.
+ *
+ * For each tracked user in a guild:
+ * - Fetches their best accepted submission for today's daily challenge.
+ * - Inserts a {@link DailySubmission} record if one doesn't already exist.
+ * - Updates the user's global stats (streak, active days).
+ *
+ * After processing all users, regenerates the ranked embed and performance chart
+ * and either **edits** the existing live-status message in the channel (if it was
+ * sent today) or **creates a new one** and stores its ID in the Guild document.
+ *
+ * This task does **not** ping Healthchecks.io; use the end-of-day
+ * {@link runDailySummaryReport} for critical uptime monitoring.
+ *
+ * @param {import('discord.js').Client} client - The Discord client.
+ * @param {string} guildId - The Discord guild ID to process.
+ * @returns {Promise<void>}
+ */
+async function updateLiveStatusForGuild(client, guildId) {
     try {
         const { ping } = require('../services/healthcheck');
-        ping('HC_PING_SILENT_CHECK');
+        ping('HC_PING_HOURLY_SYNC');
 
         const guildConfig = await getGuildConfig(guildId);
         if (!guildConfig) return;
@@ -252,7 +314,7 @@ async function performSilentCheck(client, guildId) {
 
         const guildUsers = guildConfig.users || new Map();
 
-        for (const [userId, leetcodeUsername] of guildUsers) {
+        for (const [leetcodeUsername, userId] of guildUsers) {
             try {
                 const submission = await getBestDailySubmission(leetcodeUsername, dailySlug);
                 if (submission) {
@@ -261,12 +323,9 @@ async function performSilentCheck(client, guildId) {
 
                     const existing = await DailySubmission.findOne({
                         guildId,
-                        userId,
+                        leetcodeUsername,
                         questionSlug: dailySlug,
-                        date: {
-                            $gte: today,
-                            $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
-                        }
+                        date: today
                     });
 
                     if (!existing) {
@@ -281,18 +340,191 @@ async function performSilentCheck(client, guildId) {
                             difficulty: submission.difficulty,
                             submissionTime,
                             runtime: submission.runtime,
-                            memory: submission.memory
+                            memory: submission.memory,
+                            langName: submission.langName,
+                            url: submission.url
                         });
 
-                        await updateUserStats(guildId, userId, true);
+                        await updateUserStats(guildId, leetcodeUsername, true);
                     }
                 }
             } catch (err) {
                 // ignore silent check errors
             }
         }
+
+        // Live Status Update using generateSubmissionChart and buildRankedFields
+        const todayStart = new Date();
+        todayStart.setUTCHours(0, 0, 0, 0);
+
+        const allSubmissions = await DailySubmission.find({
+            guildId,
+            date: { $gte: todayStart }
+        });
+
+        if (allSubmissions.length > 0) {
+            const results = allSubmissions.map(sub => ({
+                leetcodeUsername: sub.leetcodeUsername,
+                username: sub.leetcodeUsername, // for chart compatibility
+                discordId: sub.userId !== sub.leetcodeUsername ? sub.userId : null,
+                submission: {
+                    runtime: sub.runtime,
+                    memory: sub.memory,
+                    langName: sub.langName,
+                    url: sub.url
+                }
+            }));
+
+            const chartAttachment = await generateSubmissionChart(results);
+            const rankedFields = buildRankedFields(results);
+
+            const embed = {
+                title: '📊 Daily LeetCode Status',
+                description: `Live progress for today's challenge: **${dailySlug}**`,
+                fields: rankedFields,
+                color: 0x00ff00,
+                timestamp: new Date(),
+                footer: { text: 'Updates hourly • Silent Cron' }
+            };
+
+            if (chartAttachment) {
+                embed.image = { url: 'attachment://submission-chart.png' };
+            }
+
+            const channel = await client.channels.fetch(guildConfig.channelId).catch(() => null);
+            if (channel) {
+                const messageOptions = { embeds: [embed], files: chartAttachment ? [chartAttachment] : [] };
+
+                let messageUpdated = false;
+                if (guildConfig.liveStatusMessageId) {
+                    try {
+                        const message = await channel.messages.fetch(guildConfig.liveStatusMessageId);
+                        // Check if it's the same day (to avoid reusing yesterday's summary)
+                        if (message.createdAt >= todayStart) {
+                            await message.edit(messageOptions);
+                            messageUpdated = true;
+                        }
+                    } catch (err) {
+                        logger.debug(`Could not edit message ${guildConfig.liveStatusMessageId}, sending new one.`);
+                    }
+                }
+
+                if (!messageUpdated) {
+                    const newMessage = await channel.send(messageOptions);
+                    await Guild.findOneAndUpdate({ guildId }, { $set: { liveStatusMessageId: newMessage.id } });
+                }
+            }
+        }
     } catch (error) {
-        logger.error(`Error in performSilentCheck for guild ${guildId}:`, error);
+        logger.error(`Error in updateLiveStatusForGuild for guild ${guildId}:`, error);
+    }
+}
+
+/**
+ * End-of-day cron job that performs a final sweep of all active guilds,
+ * records any last-minute submissions to the database, refreshes user stats,
+ * and posts a definitive daily summary embed to each guild's announcement channel.
+ *
+ * This is the canonical "daily summary" job and is the sole handler scheduled
+ * via the `SILENT_CHECK_SCHEDULE` environment variable (default `55 23 * * *`).
+ *
+ * Per-guild flow:
+ * 1. Iterates every tracked user and fetches their best accepted submission
+ *    for today's problem via {@link getBestDailySubmission}.
+ * 2. Atomically upserts a {@link DailySubmission} document to prevent duplicates.
+ * 3. Collects all completions and calls {@link broadcastDailySummaryToChannel}
+ *    to post the ranked summary + performance chart.
+ *
+ * Pings `HC_PING_DAILY_SUMMARY` on Healthchecks.io so any failure to run
+ * is detected and alerted within the configured grace period.
+ *
+ * @param {import('discord.js').Client} client - The Discord client.
+ * @returns {Promise<void>}
+ */
+async function runDailySummaryReport(client) {
+    try {
+        const { ping } = require('../services/healthcheck');
+        ping('HC_PING_DAILY_SUMMARY');
+
+        const dailySlug = await getDailySlug();
+        if (!dailySlug) {
+            logger.error('Failed to fetch daily challenge slug for daily summary report');
+            return;
+        }
+
+        // Fetch problem details
+        const problemRes = await axios.get(`https://leetcode-api-pied.vercel.app/problem/${dailySlug}`);
+        const problem = problemRes.data;
+        if (!problem || !problem.difficulty) {
+            logger.error('Failed to fetch problem details for daily summary report');
+            return;
+        }
+
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+
+        const guilds = await Guild.find({ isActive: true, channelValid: { $ne: false } });
+
+        for (const guild of guilds) {
+            const guildUsers = guild.users || new Map();
+            if (guildUsers.size === 0) continue;
+
+            const submissionsData = [];
+
+            for (const [leetcodeUsername, userId] of guildUsers) {
+                try {
+                    // Update user stats
+                    await updateUserStats(guild.guildId, leetcodeUsername, true).catch(() => { });
+
+                    const bestSubmission = await getBestDailySubmission(leetcodeUsername, dailySlug);
+
+                    if (bestSubmission) {
+                        const submissionTime = parseSubmissionTime(bestSubmission);
+
+                        // Atomic upsert
+                        await DailySubmission.findOneAndUpdate(
+                            {
+                                guildId: guild.guildId,
+                                leetcodeUsername: leetcodeUsername,
+                                questionSlug: dailySlug,
+                                date: today
+                            },
+                            {
+                                $setOnInsert: {
+                                    userId,
+                                    questionTitle: problem.title,
+                                    difficulty: problem.difficulty,
+                                    submissionTime,
+                                    runtime: bestSubmission.runtime,
+                                    memory: bestSubmission.memory,
+                                    langName: bestSubmission.langName,
+                                    url: bestSubmission.url
+                                }
+                            },
+                            { upsert: true }
+                        );
+
+                        submissionsData.push({
+                            username: leetcodeUsername,
+                            discordId: userId,
+                            submission: bestSubmission
+                        });
+                    }
+                } catch (userErr) {
+                    logger.error(`Error processing user ${leetcodeUsername} in guild ${guild.guildId} during final check:`, userErr);
+                }
+            }
+
+            if (submissionsData.length > 0) {
+                try {
+                    await broadcastDailySummaryToChannel(client, guild, problem, submissionsData);
+                } catch (reportErr) {
+                    logger.error(`Error posting daily summary for guild ${guild.guildId}:`, reportErr);
+                }
+            }
+        }
+    } catch (error) {
+        logger.error('Error in runDailySummaryReport:', error);
     }
 }
 
@@ -364,17 +596,24 @@ async function initializeScheduledTasks(client) {
             }
         }
 
-        // Silent check every hour to keep stats updated without spamming
-        const silentTask = cron.schedule('0 * * * *', async () => {
+        // Hourly live-status sync: keeps per-guild submission records and the
+        // in-channel progress embed up to date throughout the day.
+        const hourlySyncTask = cron.schedule('0 * * * *', async () => {
             const activeGuilds = await Guild.find({ isActive: true });
             for (const guild of activeGuilds) {
-                await performSilentCheck(client, guild.guildId);
+                await updateLiveStatusForGuild(client, guild.guildId);
             }
         });
-        activeTasks.push(silentTask);
+        activeTasks.push(hourlySyncTask);
+
+        // End-of-day summary report: final DB sweep + ranked embed + chart.
+        // Schedule is controlled by SILENT_CHECK_SCHEDULE env var.
+        const silentCheckSchedule = process.env.SILENT_CHECK_SCHEDULE || '55 23 * * *';
+        const finalSummaryTask = cron.schedule(silentCheckSchedule, () => runDailySummaryReport(client));
+        activeTasks.push(finalSummaryTask);
 
         // Contest reminder check every 15 minutes
-        const contestTask = cron.schedule('*/15 * * * *', () => performContestReminder(client));
+        const contestTask = cron.schedule('0 16 * * 5', () => performContestReminder(client));
         activeTasks.push(contestTask);
 
         // Stats panel update every 5 minutes
@@ -428,7 +667,8 @@ async function validateGuilds(client) {
 module.exports = {
     scheduleDailyCheck,
     performDailyCheck,
-    performSilentCheck,
+    updateLiveStatusForGuild,
+    runDailySummaryReport,
     performContestReminder,
     initializeScheduledTasks,
     stopAllCronJobs,

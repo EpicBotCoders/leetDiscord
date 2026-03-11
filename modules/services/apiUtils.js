@@ -288,7 +288,11 @@ async function enhancedCheck(users, client, channelId, guildUsers = null) {
                                     userId,
                                     questionTitle: problem.title,
                                     difficulty: problem.difficulty,
-                                    submissionTime
+                                    submissionTime,
+                                    runtime: todaysSubmission.runtime,
+                                    memory: todaysSubmission.memory,
+                                    langName: todaysSubmission.langName,
+                                    url: todaysSubmission.url
                                 }
                             },
                             { upsert: true, new: true }

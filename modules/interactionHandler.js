@@ -12,6 +12,7 @@ const { handleSetChannel, handleSetAdmin, handleToggleBroadcast, handleLeaderboa
 const { handleBroadcast, handleBroadcastLogs } = require('./handlers/broadcastHandlers');
 const { handleHealthchecks } = require('./handlers/hcHandlers');
 const { handleInvite, handleBotInfo, handleStatus, handleContest, handleDaily, handleHallOfFame, handleTelegram, handleHelp } = require('./handlers/miscHandlers');
+const { handleForceSummary } = require('./handlers/ownerHandlers');
 const { handleLeaderboardPagination, handleBroadcastLogsPagination, handleWelcomeBackRestore, handleBroadcastSubmit } = require('./handlers/uiHandler');
 
 // Export formatLeetCodeContestEmbed for index.js if needed (though it should be in utils)
@@ -60,6 +61,7 @@ async function handleInteraction(interaction) {
                 case 'calendar': await handleCalendar(interaction); break;
                 case 'halloffame': await handleHallOfFame(interaction); break;
                 case 'telegram': await handleTelegram(interaction, hasAdminAccess); break;
+                case 'forcesummary': await handleForceSummary(interaction); break;
                 default:
                     await interaction.reply({ content: 'Unknown command.', flags: MessageFlags.Ephemeral });
             }

@@ -356,6 +356,14 @@
     "hidden": false
   },
   {
+    "name": "forcesummary",
+    "description": "Manually trigger the final daily summary report (Bot Owner only)",
+    "options": [],
+    "category": "Admin",
+    "adminOnly": false,
+    "hidden": true
+  },
+  {
     "name": "forcecheck",
     "description": "Manually trigger the daily check for this server (Admin only)",
     "options": [],

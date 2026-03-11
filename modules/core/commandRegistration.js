@@ -249,6 +249,13 @@ const commandDefinitions = [
     },
     {
         category: 'Admin',
+        hidden: true,
+        data: new SlashCommandBuilder()
+            .setName('forcesummary')
+            .setDescription('Manually trigger the final daily summary report (Bot Owner only)')
+    },
+    {
+        category: 'Admin',
         data: new SlashCommandBuilder()
             .setName('forcecheck')
             .setDescription('Manually trigger the daily check for this server (Admin only)')

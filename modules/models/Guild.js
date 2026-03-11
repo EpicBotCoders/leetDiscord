@@ -65,6 +65,10 @@ const guildSchema = new mongoose.Schema({
     channelValid: {
         type: Boolean,
         default: true
+    },
+    liveStatusMessageId: {
+        type: String,
+        default: null
     }
 });
 

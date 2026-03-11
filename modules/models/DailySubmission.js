@@ -36,6 +36,18 @@ const dailySubmissionSchema = new mongoose.Schema({
     submissionTime: {
         type: Date,
         required: true
+    },
+    runtime: {
+        type: String
+    },
+    memory: {
+        type: String
+    },
+    langName: {
+        type: String
+    },
+    url: {
+        type: String
     }
 });
 
