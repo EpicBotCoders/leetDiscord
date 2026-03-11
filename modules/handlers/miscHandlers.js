@@ -7,6 +7,12 @@ const { commandDefinitions } = require('../core/commandRegistration');
 const axios = require('axios');
 const { safeDeferReply, safeReply } = require('../utils/interactionUtils');
 
+/**
+ * Returns an emoji corresponding to a command category.
+ *
+ * @param {string} category - Command category name.
+ * @returns {string} Emoji representing the category.
+ */
 function getCategoryEmoji(category) {
     const map = {
         'Setup': '⚙️',
@@ -21,6 +27,14 @@ function getCategoryEmoji(category) {
     return map[category] || '📌';
 }
 
+/**
+ * Handles the `/invite` command.
+ * Sends a message containing a button that allows users to invite the bot
+ * to another Discord server.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction - Discord interaction object.
+ * @returns {Promise<void>}
+ */
 async function handleInvite(interaction) {
     const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${interaction.client.user.id}&permissions=19456&scope=bot%20applications.commands`;
 
@@ -37,6 +51,14 @@ async function handleInvite(interaction) {
     });
 }
 
+/**
+ * Handles the `/botinfo` command.
+ * Sends a message containing information about the bot, including its version,
+ * library, and an invitation link.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction - Discord interaction object.
+ * @returns {Promise<void>}
+ */
 async function handleBotInfo(interaction) {
     const clientId = interaction.client.user.id;
     const permissions = 19456;
@@ -58,6 +80,14 @@ async function handleBotInfo(interaction) {
     await safeReply(interaction, { embeds: [embed] });
 }
 
+/**
+ * Handles the `/status` command.
+ * Sends a message containing information about the bot's status, including
+ * its uptime, memory usage, and the number of guilds it is connected to.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction - Discord interaction object.
+ * @returns {Promise<void>}
+ */
 async function handleStatus(interaction) {
     const memoryUsage = process.memoryUsage();
     const uptime = process.uptime();
@@ -76,6 +106,13 @@ async function handleStatus(interaction) {
     await safeReply(interaction, { embeds: [embed] });
 }
 
+/**
+ * Handles the `/contest` command.
+ * Sends a message containing information about upcoming LeetCode contests.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction - Discord interaction object.
+ * @returns {Promise<void>}
+ */
 async function handleContest(interaction) {
     await safeDeferReply(interaction);
     try {
@@ -93,6 +130,14 @@ async function handleContest(interaction) {
     }
 }
 
+/**
+ * Handles the `/daily` command.
+ * Sends a message containing information about today's LeetCode daily challenge.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction - Discord interaction object.
+ * @param {Function} getGuildUsers - Function to retrieve guild users.
+ * @returns {Promise<void>}
+ */
 async function handleDaily(interaction, getGuildUsers) {
     await safeDeferReply(interaction);
 
@@ -217,6 +262,13 @@ async function handleDaily(interaction, getGuildUsers) {
     }
 }
 
+/**
+ * Handles the `/halloffame` command.
+ * Sends a message containing a link to the LeetCode Hall of Fame for the server.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction - Discord interaction object.
+ * @returns {Promise<void>}
+ */
 async function handleHallOfFame(interaction) {
     const guildId = interaction.guildId;
     const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -235,6 +287,13 @@ async function handleHallOfFame(interaction) {
     await safeReply(interaction, { embeds: [embed] });
 }
 
+/**
+ * Handles the `/telegram` command.
+ * Sends a message containing a link to the LeetCode Hall of Fame for the server.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction - Discord interaction object.
+ * @returns {Promise<void>}
+ */
 async function handleTelegram(interaction, hasAdminAccess) {
     const subcommand = interaction.options.getSubcommand();
     await safeDeferReply(interaction, true);
@@ -291,6 +350,13 @@ async function handleTelegram(interaction, hasAdminAccess) {
     }
 }
 
+/**
+ * Handles the `/help` command.
+ * Sends a message containing a list of available commands organized by category.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction - Discord interaction object.
+ * @returns {Promise<void>}
+ */
 async function handleHelp(interaction) {
     const categories = {};
 

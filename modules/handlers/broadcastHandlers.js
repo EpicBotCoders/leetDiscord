@@ -4,6 +4,16 @@ const BroadcastLog = require('../models/BroadcastLog');
 const { buildBroadcastLogsPage } = require('../utils/broadcastUtils');
 const { safeDeferReply, safeReply } = require('../utils/interactionUtils');
 
+/**
+ * Handles the `/broadcast` command.
+ * Opens a modal allowing the bot owner to compose a broadcast message
+ * that will later be sent to all configured guild channels.
+ *
+ * Only the bot owner (defined via BOT_OWNER_ID) is authorized to use this command.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleBroadcast(interaction) {
     if (interaction.user.id !== process.env.BOT_OWNER_ID) {
         await safeReply(interaction, { content: 'You are not authorized to use this command.', flags: 64 });
@@ -29,6 +39,16 @@ async function handleBroadcast(interaction) {
     await interaction.showModal(modal);
 }
 
+/**
+ * Handles the `/broadcastlogs` command.
+ * Fetches previously sent broadcast logs from the database and
+ * displays them in a paginated embed.
+ *
+ * Only accessible to the bot owner.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleBroadcastLogs(interaction) {
     if (interaction.user.id !== process.env.BOT_OWNER_ID) {
         await safeReply(interaction, { content: 'You are not authorized to use this command.', flags: 64 });

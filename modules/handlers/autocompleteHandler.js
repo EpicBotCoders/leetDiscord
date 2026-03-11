@@ -2,11 +2,25 @@ const logger = require('../core/logger');
 const { getGuildUsers, listCronJobs } = require('../core/configManager');
 const { listChecks } = require('../services/healthchecksApiUtils');
 
-// Cache for autocomplete data - updated only when members or cron jobs are added/removed
-const usernameCache = new Map(); // Map<guildId, string[]> - array of usernames
-const cronJobsCache = new Map(); // Map<guildId, string[]> - array of cron schedule strings
+/**
+ * Cache storing LeetCode usernames per guild.
+ * @type {Map<string, string[]>}
+ */
+const usernameCache = new Map(); // Map<guildId, string[]>
 
-// Helper function to get cached usernames, fetching from DB if not cached
+/**
+ * Cache storing cron job schedule strings per guild.
+ * @type {Map<string, string[]>}
+ */
+const cronJobsCache = new Map(); // Map<guildId, string[]>
+
+/**
+ * Retrieves cached usernames for a guild. If not cached,
+ * fetches from the database and stores them in memory.
+ *
+ * @param {string} guildId - Discord guild ID.
+ * @returns {Promise<string[]>} Array of LeetCode usernames.
+ */
 async function getCachedUsernames(guildId) {
     if (!usernameCache.has(guildId)) {
         logger.info(`No cached usernames for guild ${guildId}, fetching from DB`);
@@ -17,7 +31,13 @@ async function getCachedUsernames(guildId) {
     return usernameCache.get(guildId);
 }
 
-// Helper function to get cached cron jobs, fetching from DB if not cached
+/**
+ * Retrieves cached cron jobs for a guild. If not cached,
+ * fetches them from the database and stores them in memory.
+ *
+ * @param {string} guildId - Discord guild ID.
+ * @returns {Promise<string[]>} Array of cron schedule strings.
+ */
 async function getCachedCronJobs(guildId) {
     if (!cronJobsCache.has(guildId)) {
         const cronJobs = await listCronJobs(guildId);
@@ -26,15 +46,34 @@ async function getCachedCronJobs(guildId) {
     return cronJobsCache.get(guildId);
 }
 
-// Cache invalidation functions
+/**
+ * Clears the cached usernames for a guild.
+ * Should be called when users are added or removed.
+ *
+ * @param {string} guildId - Discord guild ID.
+ */
 function invalidateUsernameCache(guildId) {
     usernameCache.delete(guildId);
 }
 
+/**
+ * Clears the cached cron jobs for a guild.
+ * Should be called when cron schedules change.
+ *
+ * @param {string} guildId - Discord guild ID.
+ */
 function invalidateCronJobsCache(guildId) {
     cronJobsCache.delete(guildId);
 }
 
+/**
+ * Main handler for Discord slash command autocomplete interactions.
+ * Routes the autocomplete request to the appropriate handler
+ * based on the command name.
+ *
+ * @param {import('discord.js').AutocompleteInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleAutocomplete(interaction) {
     const { commandName, guildId } = interaction;
 
@@ -65,6 +104,13 @@ async function handleAutocomplete(interaction) {
     }
 }
 
+/**
+ * Handles username autocomplete for commands that require
+ * selecting a tracked LeetCode user.
+ *
+ * @param {import('discord.js').AutocompleteInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleUsernameAutocomplete(interaction) {
     const focusedValue = interaction.options.getFocused().toLowerCase();
 
@@ -83,7 +129,7 @@ async function handleUsernameAutocomplete(interaction) {
                         displayName = member.user.displayName || member.user.username;
                     }
                 } catch (error) {
-                    // Fallback
+                    // Fallback to LeetCode username
                 }
             }
 
@@ -108,6 +154,15 @@ async function handleUsernameAutocomplete(interaction) {
     }
 }
 
+/**
+ * Handles autocomplete for cron schedule removal
+ * within the `/managecron remove` subcommand.
+ *
+ * Converts stored cron strings into readable time values.
+ *
+ * @param {import('discord.js').AutocompleteInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleCronAutocomplete(interaction) {
     const subcommand = interaction.options.getSubcommand();
     if (subcommand !== 'remove') {
@@ -149,7 +204,13 @@ async function handleCronAutocomplete(interaction) {
     }
 }
 
-
+/**
+ * Handles autocomplete for Healthchecks.io checks.
+ * Allows searching by check name or slug.
+ *
+ * @param {import('discord.js').AutocompleteInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleHealthchecksAutocomplete(interaction) {
     const focusedValue = interaction.options.getFocused().toLowerCase();
 
@@ -175,7 +236,6 @@ async function handleHealthchecksAutocomplete(interaction) {
 }
 
 module.exports = {
-
     handleAutocomplete,
     invalidateUsernameCache,
     invalidateCronJobsCache,

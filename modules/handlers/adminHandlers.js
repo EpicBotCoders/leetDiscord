@@ -21,6 +21,13 @@ const { safeDeferReply, safeReply } = require('../utils/interactionUtils');
 const { hasAdminAccess } = require('../core/auth');
 const TelegramUser = require('../models/TelegramUser');
 
+/**
+ * Handles `/setchannel` command.
+ * Updates the guild's announcement channel used by the bot.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleSetChannel(interaction) {
     const channel = interaction.options.getChannel('channel');
     await safeDeferReply(interaction, true);
@@ -34,6 +41,14 @@ async function handleSetChannel(interaction) {
     }
 }
 
+/**
+ * Handles `/setadmin` command.
+ * Assigns a Discord role that can manage bot settings.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @param {(guildId: string, roleId: string) => void} setCachedAdminRole
+ * @returns {Promise<void>}
+ */
 async function handleSetAdmin(interaction, setCachedAdminRole) {
     const role = interaction.options.getRole('role');
     await safeDeferReply(interaction, true);
@@ -48,6 +63,14 @@ async function handleSetAdmin(interaction, setCachedAdminRole) {
     }
 }
 
+/**
+ * Handles `/togglebroadcast`.
+ * Enables or disables system broadcasts for the guild.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @param {(interaction: import('discord.js').ChatInputCommandInteraction) => Promise<boolean>} hasAdminAccess
+ * @returns {Promise<void>}
+ */
 async function handleToggleBroadcast(interaction, hasAdminAccess) {
     const guild = interaction.guild;
     if (!guild) {
@@ -85,6 +108,13 @@ async function handleToggleBroadcast(interaction, hasAdminAccess) {
     }
 }
 
+/**
+ * Handles `/leaderboard`.
+ * Builds and displays the LeetCode leaderboard for the server.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleLeaderboard(interaction) {
     const period = interaction.options.getString('period') || 'daily';
     const metric = interaction.options.getString('metric') || 'streak';
@@ -145,6 +175,14 @@ async function handleLeaderboard(interaction) {
     }
 }
 
+/**
+ * Handles `/forcecheck`.
+ * Triggers the daily LeetCode check manually.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @param {(client: import('discord.js').Client, guildId: string) => Promise<string>} performDailyCheck
+ * @returns {Promise<void>}
+ */
 async function handleForceCheck(interaction, performDailyCheck) {
     await safeDeferReply(interaction, true);
 
@@ -157,6 +195,14 @@ async function handleForceCheck(interaction, performDailyCheck) {
     }
 }
 
+/**
+ * Handles `/togglecontestreminder`.
+ * Enables or disables contest reminder notifications.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @param {(interaction: import('discord.js').ChatInputCommandInteraction) => Promise<boolean>} hasAdminAccess
+ * @returns {Promise<void>}
+ */
 async function handleToggleContestReminder(interaction, hasAdminAccess) {
     const isAdmin = await hasAdminAccess(interaction);
     if (!isAdmin) {
@@ -177,6 +223,13 @@ async function handleToggleContestReminder(interaction, hasAdminAccess) {
     }
 }
 
+/**
+ * Handles `/managecron`.
+ * Allows admins to add, remove, or list scheduled daily check times.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleManageCron(interaction) {
     const subcommand = interaction.options.getSubcommand();
     await safeDeferReply(interaction, true);
@@ -218,10 +271,12 @@ async function handleManageCron(interaction) {
                 await safeReply(interaction, 'No check times scheduled.');
                 return;
             }
+
             const jobStrings = jobs.map(j => {
                 const [min, hour] = j.split(' ');
                 return `${hour.padStart(2, '0')}:${min.padStart(2, '0')} UTC`;
             });
+
             await safeReply(interaction, `**Scheduled Check Times:**\n${jobStrings.join(', ')}`);
         }
     } catch (error) {
@@ -230,6 +285,13 @@ async function handleManageCron(interaction) {
     }
 }
 
+/**
+ * Handles `/config`.
+ * Displays the current server configuration for the bot.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleConfig(interaction) {
     const isAdmin = await hasAdminAccess(interaction, getAdminRole);
     if (!isAdmin) {
@@ -292,16 +354,8 @@ async function handleConfig(interaction) {
             color: 0x00d9ff,
             title: '⚙️ Server Configuration Overview',
             fields: [
-                {
-                    name: '📢 Announcement Channel',
-                    value: announcementChannel,
-                    inline: true
-                },
-                {
-                    name: '⏰ Check Schedule',
-                    value: formattedCron,
-                    inline: true
-                },
+                { name: '📢 Announcement Channel', value: announcementChannel, inline: true },
+                { name: '⏰ Check Schedule', value: formattedCron, inline: true },
                 {
                     name: '👥 Tracked Users',
                     value: `Total: **${totalTrackedUsers}**\nLinked to Discord: **${discordLinkedUsers}**`,
@@ -314,16 +368,8 @@ async function handleConfig(interaction) {
                         : 'Status: **Disabled** (no Telegram bot token configured)',
                     inline: true
                 },
-                {
-                    name: '🛡️ Admin Role',
-                    value: adminRoleDisplay,
-                    inline: true
-                },
-                {
-                    name: '📡 System Broadcasts',
-                    value: broadcastStatus,
-                    inline: true
-                }
+                { name: '🛡️ Admin Role', value: adminRoleDisplay, inline: true },
+                { name: '📡 System Broadcasts', value: broadcastStatus, inline: true }
             ],
             footer: {
                 text: 'Use /setchannel, /managecron, /adduser, /telegram, and /togglebroadcast to update this configuration.'

@@ -13,10 +13,31 @@ const { safeDeferReply, safeReply } = require('../utils/interactionUtils');
 
 const BOT_OWNER_ID = process.env.BOT_OWNER_ID;
 
+/**
+ * Checks whether a given user ID belongs to the bot owner.
+ *
+ * @param {string} userId - Discord user ID.
+ * @returns {Promise<boolean>} True if the user is the bot owner.
+ */
 async function isOwnerOnly(userId) {
     return userId === BOT_OWNER_ID;
 }
 
+/**
+ * Main handler for the `/hc` (Healthchecks.io) command.
+ * Routes execution to the appropriate subcommand handler.
+ *
+ * This command is restricted to the bot owner.
+ *
+ * Subcommands supported:
+ * - overview
+ * - info
+ * - history
+ * - flips
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleHealthchecks(interaction) {
     const isOwner = await isOwnerOnly(interaction.user.id);
     if (!isOwner) {
@@ -48,6 +69,13 @@ async function handleHealthchecks(interaction) {
     }
 }
 
+/**
+ * Displays an overview of all Healthchecks.io checks,
+ * including status, last ping, and next expected ping.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleHealthchecksOverview(interaction) {
     await safeDeferReply(interaction);
     try {
@@ -89,6 +117,15 @@ async function handleHealthchecksOverview(interaction) {
     }
 }
 
+/**
+ * Displays detailed information for a specific Healthchecks.io check.
+ *
+ * Information includes status, last ping, timeout, grace period,
+ * total pings, tags, and description.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleHealthchecksInfo(interaction) {
     await safeDeferReply(interaction);
     try {
@@ -123,10 +160,21 @@ async function handleHealthchecksInfo(interaction) {
     }
 }
 
+/**
+ * Shows recent ping history for a Healthchecks.io check.
+ *
+ * Displays ping timestamps, status types (success/start/failure),
+ * and execution durations where available.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleHealthchecksHistory(interaction) {
     await safeDeferReply(interaction);
     try {
+        const checkName = interaction.options.getString('check');
         const limit = interaction.options.getInteger('limit') || 10;
+
         const checkInfo = await findCheckByName(checkName);
         const pings = await getCheckPings(checkInfo.uuid, limit);
 
@@ -157,11 +205,20 @@ async function handleHealthchecksHistory(interaction) {
     }
 }
 
+/**
+ * Displays recent status changes (UP/DOWN flips) for a Healthchecks.io check.
+ *
+ * Useful for identifying instability or outages within a given time window.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleHealthchecksFlips(interaction) {
     await safeDeferReply(interaction);
     try {
         const checkName = interaction.options.getString('check');
         const days = interaction.options.getInteger('days') || 7;
+
         const checkInfo = await findCheckByName(checkName);
         const seconds = days * 24 * 60 * 60;
         const flips = await getCheckFlips(checkInfo.uuid, seconds);

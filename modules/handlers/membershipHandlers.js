@@ -7,6 +7,18 @@ const { formatUserProfileEmbed } = require('../utils/embeds');
 const { safeDeferReply, safeReply } = require('../utils/interactionUtils');
 const { getGuildUsers } = require('../core/configManager');
 
+/**
+ * Handles the `/profile` command.
+ * Fetches a user's LeetCode profile and badge data, stores it in the database,
+ * and displays a formatted embed with optional badge chart.
+ *
+ * If no username is provided, the command attempts to resolve the
+ * caller's linked LeetCode username from the guild configuration.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @param {(guildId: string) => Promise<Record<string,string>>} getGuildUsers
+ * @returns {Promise<void>}
+ */
 async function handleProfile(interaction, getGuildUsers) {
     await safeDeferReply(interaction);
     let username = interaction.options.getString('username');
@@ -79,6 +91,15 @@ async function handleProfile(interaction, getGuildUsers) {
     }
 }
 
+/**
+ * Handles the `/adduser` command.
+ * Registers a LeetCode username to the current guild and optionally
+ * links it to a Discord user.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @param {(guildId: string, username: string, discordId?: string|null) => Promise<string>} addUser
+ * @returns {Promise<void>}
+ */
 async function handleAddUser(interaction, addUser) {
     const username = interaction.options.getString('username');
     const userOption = interaction.options.getMember('discord_user');
@@ -95,6 +116,14 @@ async function handleAddUser(interaction, addUser) {
     }
 }
 
+/**
+ * Handles the `/removeuser` command.
+ * Removes a tracked LeetCode username from the guild configuration.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @param {(guildId: string, username: string) => Promise<string>} removeUser
+ * @returns {Promise<void>}
+ */
 async function handleRemoveUser(interaction, removeUser) {
     const username = interaction.options.getString('username');
     await safeDeferReply(interaction);
@@ -108,6 +137,15 @@ async function handleRemoveUser(interaction, removeUser) {
     }
 }
 
+/**
+ * Handles the `/listusers` command.
+ * Displays all LeetCode usernames currently tracked in the guild
+ * along with their linked Discord accounts.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @param {(guildId: string) => Promise<Record<string,string>>} getGuildUsers
+ * @returns {Promise<void>}
+ */
 async function handleListUsers(interaction, getGuildUsers) {
     await safeDeferReply(interaction, true);
     try {
@@ -129,6 +167,17 @@ async function handleListUsers(interaction, getGuildUsers) {
     }
 }
 
+/**
+ * Handles the `/leetstats` command.
+ * Shows LeetCode activity statistics such as streak and total active days.
+ *
+ * If `show_all` is true, statistics for all tracked users are shown.
+ * Otherwise the command resolves the caller's linked username.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @param {(guildId: string) => Promise<Record<string,string>>} getGuildUsers
+ * @returns {Promise<void>}
+ */
 async function handleLeetStats(interaction, getGuildUsers) {
     await safeDeferReply(interaction);
     const showAll = interaction.options.getBoolean('show_all') || false;
@@ -184,16 +233,32 @@ async function handleLeetStats(interaction, getGuildUsers) {
     }
 }
 
+/**
+ * Handles the `/calendar` command.
+ * Generates a visual activity chart based on a user's LeetCode submission calendar.
+ *
+ * Supported ranges:
+ * - current_month
+ * - last 7 days
+ * - last 30 days
+ * - last 90 days
+ *
+ * The command resolves the target user either from the provided
+ * username option or from the caller's linked account.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @returns {Promise<void>}
+ */
 async function handleCalendar(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
         const rangeOption = interaction.options.getString('range') || 'current_month';
 
-        // Resolve range to a number of days and a display label
         let range;
         let rangeLabel;
         let daysLabel;
+
         if (rangeOption === 'current_month') {
             const now = new Date();
             range = 'current_month';
@@ -244,8 +309,8 @@ async function handleCalendar(interaction) {
 
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0);
-        let start, end;
-        let totalDays;
+
+        let start, end, totalDays;
 
         if (range === 'current_month') {
             start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
@@ -255,7 +320,7 @@ async function handleCalendar(interaction) {
         } else {
             start = new Date(today);
             start.setDate(today.getDate() - (range - 1));
-            end = new Date(today.getTime() + 86399000); // End of today
+            end = new Date(today.getTime() + 86399000);
             totalDays = range;
         }
 
@@ -263,6 +328,7 @@ async function handleCalendar(interaction) {
 
         const submissionCalendar = calendarData?.submissionCalendar || calendarData?.calendar || {};
         let activeDaysInRange = 0;
+
         const startTimeTs = Math.floor(start.getTime() / 1000);
         const endTimeTs = Math.floor(end.getTime() / 1000);
 
@@ -274,21 +340,9 @@ async function handleCalendar(interaction) {
         }
 
         const fields = [
-            {
-                name: '🔥 Current Streak',
-                value: `**${calendarData.streak || 0}** days`,
-                inline: true
-            },
-            {
-                name: `📅 Active Days (${daysLabel})`,
-                value: `**${activeDaysInRange}** / ${totalDays}`,
-                inline: true
-            },
-            {
-                name: '📆 Total Active',
-                value: `**${calendarData.totalActiveDays || 0}**`,
-                inline: true
-            }
+            { name: '🔥 Current Streak', value: `**${calendarData.streak || 0}** days`, inline: true },
+            { name: `📅 Active Days (${daysLabel})`, value: `**${activeDaysInRange}** / ${totalDays}`, inline: true },
+            { name: '📆 Total Active', value: `**${calendarData.totalActiveDays || 0}**`, inline: true }
         ];
 
         const embed = {
@@ -296,19 +350,13 @@ async function handleCalendar(interaction) {
             title: `🗓️ Activity Calendar for ${targetUsername}`,
             description: `Showing LeetCode activity for **${rangeLabel}** (${start.toISOString().slice(0, 10)} → ${end.toISOString().slice(0, 10)}) for ${mention}`,
             fields,
-            image: {
-                url: 'attachment://calendar-chart.png'
-            },
-            footer: {
-                text: 'Chart colors: Green (Active Day), Gray (No Activity)'
-            },
+            image: { url: 'attachment://calendar-chart.png' },
+            footer: { text: 'Chart colors: Green (Active Day), Gray (No Activity)' },
             timestamp: new Date()
         };
 
         const response = { embeds: [embed] };
-        if (chartAttachment) {
-            response.files = [chartAttachment];
-        }
+        if (chartAttachment) response.files = [chartAttachment];
 
         await interaction.editReply(response);
     } catch (error) {
