@@ -233,12 +233,12 @@ async function handleDaily(interaction, getGuildUsers) {
                 { name: '\u200b', value: '\u200b', inline: true },
                 {
                     name: '⚡ Runtime',
-                    value: bestSubmission.runtime,
+                    value: bestSubmission.runtime || 'N/A',
                     inline: true
                 },
                 {
                     name: '🧠 Memory',
-                    value: bestSubmission.memory,
+                    value: bestSubmission.memory || 'N/A',
                     inline: true
                 },
                 { name: '\u200b', value: '\u200b', inline: true }

@@ -40,12 +40,14 @@ async function generateSubmissionChart(submissionsData) {
         // Extract data for chart
         const usernames = submissionsData.map(data => data.username);
         const runtimes = submissionsData.map(data => {
-            const runtime = data.submission.runtime;
+            const runtime = data.submission?.runtime;
+            if (!runtime || typeof runtime !== 'string') return 0;
             const match = runtime.match(/(\d+(?:\.\d+)?)\s*ms/i);
             return match ? parseFloat(match[1]) : 0;
         });
         const memories = submissionsData.map(data => {
-            const memory = data.submission.memory;
+            const memory = data.submission?.memory;
+            if (!memory || typeof memory !== 'string') return 0;
             const match = memory.match(/(\d+(?:\.\d+)?)\s*MB/i);
             return match ? parseFloat(match[1]) : 0;
         });

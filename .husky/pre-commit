@@ -1,40 +1,46 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 # Get package.json versions
 old_version=$(git show HEAD:package.json | grep '"version"' | sed -E 's/.*"version": ?"([^"]+)".*/\1/')
 new_version=$(grep '"version"' package.json | sed -E 's/.*"version": ?"([^"]+)".*/\1/')
 
-# Compare using simple semver check (major.minor.patch)
-awk -v old="$old_version" -v new="$new_version" '
-  BEGIN {
-    split(old, o, ".");
-    split(new, n, ".");
-    if (n[1] < o[1] || (n[1] == o[1] && n[2] < o[2]) || 
-        (n[1] == o[1] && n[2] == o[2] && n[3] <= o[3])) {
-      print "Version must be greater than '"'"'$old_version'"'"' (current).";
-      exit 1;
-    }
-    exit 0;
+# Compare versions
+if ! awk -v old="$old_version" -v new="$new_version" '
+BEGIN {
+  split(old, o, ".");
+  split(new, n, ".");
+  if (n[1] < o[1] ||
+     (n[1] == o[1] && n[2] < o[2]) ||
+     (n[1] == o[1] && n[2] == o[2] && n[3] <= o[3])) {
+    exit 1;
   }
-'
+  exit 0;
+}'; then
 
-if [ $? -ne 0 ]; then
-  echo "Update package.json version before committing."
+  echo "Version must be greater than $old_version."
+
+  # Extract parts safely (POSIX compatible)
+  major=$(echo "$old_version" | cut -d. -f1)
+  minor=$(echo "$old_version" | cut -d. -f2)
+  patch=$(echo "$old_version" | cut -d. -f3)
+
+  new_patch=$((patch + 1))
+  bumped_version="$major.$minor.$new_patch"
+
+  echo "Auto updating package.json to $bumped_version (not committing)."
+
+  sed -i -E 's/"version": ?"[^"]+"/"version": "'"$bumped_version"'"/' package.json
+
+  echo "package.json updated locally. Please review and commit again."
   exit 1
 fi
 
-# Export commands and stage the commands.json file
 echo "Exporting commands..."
 node scripts/export-commands.js
 
-if [ $? -eq 0 ]; then
-  echo "Staging generated commands.json..."
-  git add frontend/public/commands.json
-  git add package.json
-else
-  echo "Failed to export commands."
-  exit 1
-fi
+echo "Staging generated commands.json..."
+git add frontend/public/commands.json
+git add package.json
 
 exit 0

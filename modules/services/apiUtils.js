@@ -326,7 +326,7 @@ async function enhancedCheck(users, client, channelId, guildUsers = null) {
 
 // Helper function to parse runtime strings like "1293 ms" into numeric milliseconds
 function parseDuration(durationString) {
-    if (!durationString) return Infinity;
+    if (!durationString || typeof durationString !== 'string') return Infinity;
 
     const match = durationString.match(/(\d+(?:\.\d+)?)\s*ms/i);
     if (match) {
@@ -339,7 +339,7 @@ function parseDuration(durationString) {
 
 // Helper function to parse memory strings like "19.6 MB" into numeric megabytes
 function parseMemory(memoryString) {
-    if (!memoryString) return Infinity;
+    if (!memoryString || typeof memoryString !== 'string') return Infinity;
 
     const match = memoryString.match(/(\d+(?:\.\d+)?)\s*MB/i);
     if (match) {
