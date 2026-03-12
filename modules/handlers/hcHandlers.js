@@ -85,18 +85,15 @@ async function handleHealthchecksOverview(interaction) {
             return;
         }
 
-        const lines = ['```\nName                | Status  | Last Ping     | Next Ping'];
-        lines.push('─'.repeat(75));
+        const lines = [];
 
         for (const check of checks) {
             const lastPing = formatTimeAgo(check.lastPing);
-            const nextPing = check.nextPing ? formatTimeUntil(check.nextPing) : 'N/A';
-            const name = check.name.substring(0, 18).padEnd(18);
-            const status = `${check.statusEmoji} ${check.status}`.padEnd(8);
-            const lastPingStr = lastPing.padEnd(13);
-            lines.push(`${name} | ${status} | ${lastPingStr} | ${nextPing}`);
+            const nextPing = check.nextPing ? formatTimeUntil(check.nextPing) : '`N/A`';
+            const name = `**${check.name}**`;
+            const status = `${check.statusEmoji} ${check.status.toUpperCase()}`;
+            lines.push(`${name}\n└ ${status} • Last: ${lastPing} • Next: ${nextPing}`);
         }
-        lines.push('```');
 
         const embed = {
             title: '📊 Healthchecks.io Overview',

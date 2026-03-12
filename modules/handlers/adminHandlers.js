@@ -274,7 +274,9 @@ async function handleManageCron(interaction) {
 
             const jobStrings = jobs.map(j => {
                 const [min, hour] = j.split(' ');
-                return `${hour.padStart(2, '0')}:${min.padStart(2, '0')} UTC`;
+                const now = new Date();
+                const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), parseInt(hour), parseInt(min)));
+                return `<t:${Math.floor(date.getTime() / 1000)}:t>`;
             });
 
             await safeReply(interaction, `**Scheduled Check Times:**\n${jobStrings.join(', ')}`);
@@ -318,7 +320,9 @@ async function handleConfig(interaction) {
         const formattedCron = cronSchedules.length
             ? cronSchedules.map(schedule => {
                 const [minutes, hours] = schedule.split(' ');
-                return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')} UTC`;
+                const now = new Date();
+                const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), parseInt(hours), parseInt(minutes)));
+                return `<t:${Math.floor(date.getTime() / 1000)}:t>`;
             }).join('\n')
             : 'None configured';
 

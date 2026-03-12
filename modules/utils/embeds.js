@@ -125,7 +125,10 @@ function formatUserProfileEmbed(profileData, badgesData) {
         // Sort by creation date (newest first)
         const sortedBadges = [...badges].sort((a, b) => new Date(b.creationDate) - new Date(a.creationDate));
         const recentBadges = sortedBadges.slice(0, 6);
-        badgesStr = recentBadges.map(b => `🏅 **${b.displayName}** • ${new Date(b.creationDate).toLocaleDateString()}`).join('\n');
+        badgesStr = recentBadges.map(b => {
+            const ts = Math.floor(new Date(b.creationDate).getTime() / 1000);
+            return `🏅 **${b.displayName}** • <t:${ts}:d>`;
+        }).join('\n');
 
         if (badges.length > 6) {
             badgesStr += `\n\n*... and ${badges.length - 6} more amazing badges! 🎖️*`;

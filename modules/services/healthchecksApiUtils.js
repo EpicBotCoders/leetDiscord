@@ -90,60 +90,30 @@ function getStatusEmoji(status) {
 }
 
 /**
- * Format timestamp to readable format
+ * Format timestamp to Discord readable format
  */
 function formatTime(isoTimestamp) {
     if (!isoTimestamp) return 'Never';
-    const date = new Date(isoTimestamp);
-    return date.toLocaleString('en-US', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        timeZone: 'UTC'
-    }) + ' UTC';
+    const timestamp = Math.floor(new Date(isoTimestamp).getTime() / 1000);
+    return `<t:${timestamp}:F>`;
 }
 
 /**
- * Format time ago (e.g., "5 minutes ago")
+ * Format time ago (Discord relative timestamp)
  */
 function formatTimeAgo(isoTimestamp) {
     if (!isoTimestamp) return 'Never';
-
-    const date = new Date(isoTimestamp);
-    const now = new Date();
-    const secondsAgo = Math.floor((now - date) / 1000);
-
-    if (secondsAgo < 60) return `${secondsAgo}s ago`;
-    const minutesAgo = Math.floor(secondsAgo / 60);
-    if (minutesAgo < 60) return `${minutesAgo}m ago`;
-    const hoursAgo = Math.floor(minutesAgo / 60);
-    if (hoursAgo < 24) return `${hoursAgo}h ago`;
-    const daysAgo = Math.floor(hoursAgo / 24);
-    return `${daysAgo}d ago`;
+    const timestamp = Math.floor(new Date(isoTimestamp).getTime() / 1000);
+    return `<t:${timestamp}:R>`;
 }
 
 /**
- * Format time until a future timestamp (e.g., "in 5m", "in 2h")
- * Returns "overdue" if the timestamp is already in the past.
+ * Format time until (Discord relative timestamp)
  */
 function formatTimeUntil(isoTimestamp) {
     if (!isoTimestamp) return 'N/A';
-
-    const date = new Date(isoTimestamp);
-    const now = new Date();
-    const secondsUntil = Math.floor((date - now) / 1000);
-
-    if (secondsUntil < 0) return 'overdue';
-    if (secondsUntil < 60) return `in ${secondsUntil}s`;
-    const minutesUntil = Math.floor(secondsUntil / 60);
-    if (minutesUntil < 60) return `in ${minutesUntil}m`;
-    const hoursUntil = Math.floor(minutesUntil / 60);
-    if (hoursUntil < 24) return `in ${hoursUntil}h`;
-    const daysUntil = Math.floor(hoursUntil / 24);
-    return `in ${daysUntil}d`;
+    const timestamp = Math.floor(new Date(isoTimestamp).getTime() / 1000);
+    return `<t:${timestamp}:R>`;
 }
 
 /**

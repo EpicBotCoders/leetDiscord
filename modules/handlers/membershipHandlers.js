@@ -348,7 +348,7 @@ async function handleCalendar(interaction) {
         const embed = {
             color: 0x5865F2,
             title: `🗓️ Activity Calendar for ${targetUsername}`,
-            description: `Showing LeetCode activity for **${rangeLabel}** (${start.toISOString().slice(0, 10)} → ${end.toISOString().slice(0, 10)}) for ${mention}`,
+            description: `Showing LeetCode activity for **${rangeLabel}** (<t:${Math.floor(start.getTime() / 1000)}:d> → <t:${Math.floor(end.getTime() / 1000)}:d>) for ${mention}`,
             fields,
             image: { url: 'attachment://calendar-chart.png' },
             footer: { text: 'Chart colors: Green (Active Day), Gray (No Activity)' },

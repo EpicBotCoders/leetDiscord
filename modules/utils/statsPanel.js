@@ -190,10 +190,15 @@ function buildStatsEmbed(metrics) {
                 name: '🧊 Inactive Servers',
                 value: `${metrics.inactiveGuilds || 0}`,
                 inline: true
+            },
+            {
+                name: '🕒 Last Updated',
+                value: `<t:${Math.floor(Date.now() / 1000)}:R>`,
+                inline: true
             }
         ],
         footer: {
-            text: `Last updated: ${new Date().toUTCString()} | Updates every 5 minutes`
+            text: 'Updates every 5 minutes'
         },
         timestamp: new Date()
     };

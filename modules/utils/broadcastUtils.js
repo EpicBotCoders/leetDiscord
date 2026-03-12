@@ -15,33 +15,14 @@ function buildBroadcastLogsPage(allLogs, page) {
     const slice = allLogs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
     const globalOffset = (page - 1) * PAGE_SIZE;
 
-    // Helpers
-    const rpad = (val, len) => String(val).padStart(len);
-    const lpad = (val, len) => String(val).padEnd(len);
-    const fmtDate = d => {
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        return `${String(d.getUTCDate()).padStart(2, '0')} ${months[d.getUTCMonth()]} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-    };
-
-    // ── Summary table ────────────────────────────────────────────────
-    const COL = { num: 2, type: 5, date: 13, succ: 4, fail: 4 };
-    const H = ` # │ ${'Type'.padEnd(COL.type)} │ ${'Date UTC'.padEnd(COL.date)} │ Succ │ Fail │ Sender`;
-    const DIV = '─'.repeat(H.length);
-
-    const tableRows = slice.map((log, i) => {
+    // ── Summary list ────────────────────────────────────────────────
+    const listRows = slice.map((log, i) => {
         const globalIdx = globalOffset + i + 1;
-        const dateStr = fmtDate(new Date(log.sentAt));
-        return [
-            rpad(globalIdx, COL.num),
-            lpad((log.type || '?').toUpperCase(), COL.type),
-            lpad(dateStr, COL.date),
-            rpad(log.successCount, COL.succ),
-            rpad(log.failCount, COL.fail),
-            log.senderUsername
-        ].join(' │ ');
+        const ts = Math.floor(new Date(log.sentAt).getTime() / 1000);
+        const dateStr = `<t:${ts}:f>`;
+        const type = (log.type || '?').toUpperCase();
+        return `**#${globalIdx} [${type}]** • ${dateStr}\n└ ✅ ${log.successCount} | ❌ ${log.failCount} | 👤 ${log.senderUsername}`;
     });
-
-    const table = `\`\`\`\n${H}\n${DIV}\n${tableRows.join('\n')}\n\`\`\``;
 
     // ── Failed guild details for this page (only if any exist) ───────
     const failBlocks = [];
@@ -54,7 +35,7 @@ function buildBroadcastLogsPage(allLogs, page) {
         failBlocks.push(`**#${globalIdx} failures:**\n${lines}${extra}`);
     });
 
-    const description = table + (failBlocks.length ? '\n\n' + failBlocks.join('\n\n') : '');
+    const description = listRows.join('\n\n') + (failBlocks.length ? '\n\n' + failBlocks.join('\n\n') : '');
 
     const embed = {
         color: 0x5865F2,

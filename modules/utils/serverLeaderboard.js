@@ -187,6 +187,11 @@ function buildLeaderboardEmbed(metrics, statsGuild, client) {
             name: '📊 Total Submissions',
             value: `**${metrics.totalSubmissions}** submissions made by all users combined`,
             inline: true
+        },
+        {
+            name: '🕒 Last Updated',
+            value: `<t:${Math.floor(Date.now() / 1000)}:R>`,
+            inline: true
         }
     ];
 
