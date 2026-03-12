@@ -14,6 +14,8 @@ const logger = require('./logger');
 const Guild = require('../models/Guild');
 const DailySubmission = require('../models/DailySubmission');
 const { buildRankedFields } = require('../utils/leaderboardUtils');
+const { updateStatsPanel } = require('../utils/statsPanel');
+const { updateServerLeaderboard } = require('../utils/serverLeaderboard');
 
 const activeTasks = [];
 
@@ -612,23 +614,24 @@ async function initializeScheduledTasks(client) {
         const finalSummaryTask = cron.schedule(silentCheckSchedule, () => runDailySummaryReport(client));
         activeTasks.push(finalSummaryTask);
 
-        // Contest reminder check every 15 minutes
+        // Contest reminder: runs every Friday at 16:00 UTC (0 16 * * 5)
         const contestTask = cron.schedule('0 16 * * 5', () => performContestReminder(client));
         activeTasks.push(contestTask);
 
-        // Stats panel update every 5 minutes
-        const statsTask = cron.schedule('*/5 * * * *', () => {
-            const { initializeStatsPanel } = require('../utils/statsPanel');
-            initializeStatsPanel(client);
-        });
+        // Stats panel update using configured interval (default 5 mins)
+        const statsSchedule = process.env.STATS_UPDATE_INTERVAL || '*/5 * * * *';
+        const statsTask = cron.schedule(statsSchedule, () => updateStatsPanel(client));
         activeTasks.push(statsTask);
 
+        // Perform initial updates immediately
+        await updateStatsPanel(client).catch(err => logger.error('Initial stats panel update failed:', err));
+
         // Server leaderboard update every 10 minutes
-        const lbTask = cron.schedule('*/10 * * * *', () => {
-            const { initializeServerLeaderboard } = require('../utils/serverLeaderboard');
-            initializeServerLeaderboard(client);
-        });
+        const lbTask = cron.schedule('*/10 * * * *', () => updateServerLeaderboard(client));
         activeTasks.push(lbTask);
+
+        // Perform initial updates immediately
+        await updateServerLeaderboard(client).catch(err => logger.error('Initial server leaderboard update failed:', err));
 
         logger.info(`Initialized all scheduled tasks (${activeTasks.length} tasks synced).`);
     } catch (error) {

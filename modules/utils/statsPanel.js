@@ -1,4 +1,3 @@
-const cron = require('node-cron');
 const SystemConfig = require('../models/SystemConfig');
 const Guild = require('../models/Guild');
 const logger = require('../core/logger');
@@ -9,36 +8,15 @@ const STATS_GUILD_ID = process.env.STATS_GUILD_ID;
 const STATS_CHANNEL_ID = process.env.STATS_CHANNEL_ID;
 const MESSAGE_ID_KEY = 'stats_panel_message_id';
 
-let activeCronJob = null;
+
 
 /**
- * Initialize the stats panel with periodic updates
+ * Initialize the stats panel by performing an initial update.
+ * Scheduling is managed by the main task system in scheduledTasks.js.
  */
 async function initializeStatsPanel(client) {
-    try {
-        const schedule = process.env.STATS_UPDATE_INTERVAL || '0 * * * *'; // Default: every hour
-        logger.info(`Initializing stats panel with schedule: ${schedule}`);
-
-        // Clear existing job if it exists
-        if (activeCronJob) {
-            activeCronJob.stop();
-            activeCronJob = null;
-        }
-
-        // Schedule the stats panel update
-        activeCronJob = cron.schedule(schedule, async () => {
-            await updateStatsPanel(client);
-        }, {
-            timezone: 'UTC'
-        });
-
-        // Post initial stats panel
-        await updateStatsPanel(client);
-
-        logger.info('Stats panel initialized successfully');
-    } catch (error) {
-        logger.error('Error initializing stats panel:', error);
-    }
+    logger.info('Performing initial stats panel update...');
+    await updateStatsPanel(client);
 }
 
 /**
@@ -215,7 +193,7 @@ function buildStatsEmbed(metrics) {
             }
         ],
         footer: {
-            text: `Last updated: ${new Date().toUTCString()} | Updates every 10 minutes`
+            text: `Last updated: ${new Date().toUTCString()} | Updates every 5 minutes`
         },
         timestamp: new Date()
     };
@@ -240,16 +218,7 @@ function formatUptime(ms) {
     }
 }
 
-/**
- * Stop the stats panel cron job
- */
-function stopStatsPanel() {
-    if (activeCronJob) {
-        activeCronJob.stop();
-        activeCronJob = null;
-        logger.info('Stats panel cron job stopped');
-    }
-}
+
 
 /**
  * Force update the stats panel to offline status
@@ -291,6 +260,5 @@ async function forceOfflineStatsPanel(client) {
 module.exports = {
     initializeStatsPanel,
     updateStatsPanel,
-    stopStatsPanel,
     forceOfflineStatsPanel
 };

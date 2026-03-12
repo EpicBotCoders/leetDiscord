@@ -1,4 +1,3 @@
-const cron = require('node-cron');
 const SystemConfig = require('../models/SystemConfig');
 const Guild = require('../models/Guild');
 const DailySubmission = require('../models/DailySubmission');
@@ -6,36 +5,15 @@ const logger = require('../core/logger');
 
 const MESSAGE_ID_KEY = 'server_leaderboard_message_id';
 
-let activeCronJob = null;
+
 
 /**
- * Initialize the server leaderboard with periodic updates
+ * Initialize the server leaderboard by performing an initial update.
+ * Scheduling is managed by the main task system in scheduledTasks.js.
  */
 async function initializeServerLeaderboard(client) {
-    try {
-        const schedule = '0 * * * *'; // Every hour at minute 0
-        logger.info(`Initializing server leaderboard with schedule: ${schedule}`);
-
-        // Clear existing job if it exists
-        if (activeCronJob) {
-            activeCronJob.stop();
-            activeCronJob = null;
-        }
-
-        // Schedule the leaderboard update
-        activeCronJob = cron.schedule(schedule, async () => {
-            await updateServerLeaderboard(client);
-        }, {
-            timezone: 'UTC'
-        });
-
-        // Post initial leaderboard
-        await updateServerLeaderboard(client);
-
-        logger.info('Server leaderboard initialized successfully');
-    } catch (error) {
-        logger.error('Error initializing server leaderboard:', error);
-    }
+    logger.info('Performing initial server leaderboard update...');
+    await updateServerLeaderboard(client);
 }
 
 /**
@@ -248,25 +226,15 @@ function buildLeaderboardEmbed(metrics, statsGuild, client) {
         description: `Overall statistics across all servers using the bot\n(Posted in **${statsGuild.name}**)`,
         fields,
         footer: {
-            text: 'Updates automatically every hour'
+            text: 'Updates automatically every 10 minutes'
         },
         timestamp: new Date()
     };
 }
 
-/**
- * Stop the server leaderboard cron job
- */
-function stopServerLeaderboard() {
-    if (activeCronJob) {
-        activeCronJob.stop();
-        activeCronJob = null;
-        logger.info('Server leaderboard cron job stopped');
-    }
-}
+
 
 module.exports = {
     initializeServerLeaderboard,
-    updateServerLeaderboard,
-    stopServerLeaderboard
+    updateServerLeaderboard
 };
